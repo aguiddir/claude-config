@@ -97,21 +97,6 @@ else:
     print("    updated  settings.json (previous copy kept as .bak)")
 PY
 
-# --- Docker wrappers and shell helpers ------------------------------------
-step "Docker wrappers and shell helpers"
-for f in "$REPO"/bin/*; do link "$f" "$BIN_DIR/${f##*/}"; done
-source_line="[ -f \"$REPO/shell/docker.sh\" ] && . \"$REPO/shell/docker.sh\""
-for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
-  [ -f "$rc" ] || continue
-  if grep -qF "$REPO/shell/docker.sh" "$rc"; then
-    info "ok       ${rc/#$HOME/\~}"
-  else
-    info "source   ${rc/#$HOME/\~}"
-    $DRY_RUN || printf '\n# Docker helpers (claude-config)\n%s\n' "$source_line" >> "$rc"
-  fi
-done
-case ":$PATH:" in *":$BIN_DIR:"*) ;; *) info "note: add $BIN_DIR to your PATH" ;; esac
-
 # --- Plugins --------------------------------------------------------------
 if ! $SKIP_PLUGINS; then
   step "Plugins"

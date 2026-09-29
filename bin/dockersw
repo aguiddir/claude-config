@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# Docker CLI against the shared dockersw host (Engine 20.10, API 1.41).
-# Override with DOCKERSW_HOST / DOCKERSW_API_VERSION.
-export DOCKER_HOST="${DOCKERSW_HOST:-tcp://dockersw.vidal.net:4243}"
-export DOCKER_API_VERSION="${DOCKERSW_API_VERSION:-1.41}"
-exec docker "$@"
