@@ -109,6 +109,7 @@ if ! $SKIP_PLUGINS; then
   ids() { python3 -c 'import json, sys; [print(x[sys.argv[1]]) for x in json.load(sys.stdin) if sys.argv[1] in x]' "$1"; }
   known_mkt=$(claude plugin marketplace list --json 2>/dev/null | ids repo || true)
   installed=$(claude plugin list --json 2>/dev/null | ids id || true)
+  todo=()
   while read -r kind name; do
     case "$kind" in
       marketplace)
@@ -116,9 +117,37 @@ if ! $SKIP_PLUGINS; then
         else info "add      marketplace $name"; run claude plugin marketplace add "$name" || true; fi ;;
       plugin)
         if grep -qxF "$name" <<<"$installed"; then info "ok       $name"
-        else info "install  $name"; run claude plugin install "$name" || true; fi ;;
+        else info "install  $name"; todo+=("$name"); fi ;;
     esac
   done < <(grep -Ev '^\s*(#|$)' "$REPO/plugins.txt")
+
+  # Installs run in parallel: each one takes a few seconds, mostly
+  # downloading. Concurrent installs overwrite each other's writes to
+  # installed_plugins.json and to enabledPlugins in settings.json, so the
+  # plugins lost that way are then reinstalled and enabled one by one.
+  if [ ${#todo[@]} -gt 0 ]; then
+    if $DRY_RUN; then
+      info "[dry-run] claude plugin install, in parallel: ${todo[*]}"
+    else
+      printf '%s\n' "${todo[@]}" \
+        | xargs -P 8 -I{} sh -c 'claude plugin install "$1" >/dev/null 2>&1' _ {} || true
+      installed=$(claude plugin list --json 2>/dev/null | ids id || true)
+      for name in "${todo[@]}"; do
+        if ! grep -qxF "$name" <<<"$installed"; then claude plugin install "$name" >/dev/null || true; fi
+      done
+      # Only the plugins installed by this run, not the ones disabled on purpose
+      disabled=$(claude plugin list --json 2>/dev/null | python3 -c \
+        'import json, sys; [print(p["id"]) for p in json.load(sys.stdin) if not p["enabled"]]' || true)
+      for name in "${todo[@]}"; do
+        if grep -qxF "$name" <<<"$disabled"; then claude plugin enable "$name" >/dev/null || true; fi
+      done
+      installed=$(claude plugin list --json 2>/dev/null | python3 -c \
+        'import json, sys; [print(p["id"]) for p in json.load(sys.stdin) if p["enabled"]]' || true)
+      for name in "${todo[@]}"; do
+        if ! grep -qxF "$name" <<<"$installed"; then info "FAILED   $name"; fi
+      done
+    fi
+  fi
 fi
 
 # --- codebase-memory-mcp --------------------------------------------------
