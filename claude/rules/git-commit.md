@@ -5,7 +5,7 @@ Applies whenever you write a commit message or a PR description.
 ## When to commit
 
 - Commit when a task is done, on the current branch. Create a branch first if you are on `main`/`master`, unless I say otherwise.
-- Never push unless I ask.
+- Push freely on other branches; ask before pushing to `main`/`master`.
 
 ## Review feedback
 
