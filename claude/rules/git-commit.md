@@ -6,6 +6,7 @@ Applies whenever you write a commit message or a PR description.
 
 - Commit when a task is done, on the current branch. Create a branch first if you are on `main`/`master`, unless I say otherwise.
 - Push freely on other branches; ask before pushing to `main`/`master`.
+- Never bypass hooks (`--no-verify`) and never stage secrets or `.env` files.
 
 ## Review feedback
 
