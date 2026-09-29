@@ -12,3 +12,6 @@
 ## Reviews and verification
 - When reviewing code before I do, list only problems you'd block the merge for. For each one, give the file and line, why it's wrong, and how to show it fails.
 - Mark anything you couldn't confirm, and say where you looked.
+
+## Before pushing
+- Run the checks the repo's CI runs (read its Jenkinsfile or workflow files): lint, format, type check, tests. Push only when they pass, or say which ones you could not run and why.
