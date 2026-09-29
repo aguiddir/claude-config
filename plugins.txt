@@ -1,5 +1,5 @@
 # One entry per line: `marketplace <github-repo>` or `plugin <name>@<marketplace>`.
-# claude-plugins-official is known by default.
+# claude-plugins-official is added by install.sh when missing (cloud sessions).
 
 marketplace DietrichGebert/ponytail
 
