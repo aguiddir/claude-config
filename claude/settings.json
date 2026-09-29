@@ -14,5 +14,6 @@
       "effortLevel": "medium"
     }
   },
-  "theme": "dark"
+  "theme": "dark",
+  "includeGitInstructions": false
 }
