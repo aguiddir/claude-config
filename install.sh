@@ -139,7 +139,9 @@ if ! $SKIP_MCP; then
     curl -fsSL -o "$tmp/$asset" "$url/$asset"
     curl -fsSL -o "$tmp/checksums.txt" "$url/checksums.txt"
     (cd "$tmp" && grep " $asset\$" checksums.txt | sha256sum -c --quiet -)
-    tar xzf "$tmp/$asset" -C "$tmp"
+    # As root, tar keeps the archive's owner (uid 1001), and the installer
+    # refuses a binary not owned by the current user
+    tar xzf "$tmp/$asset" -C "$tmp" --no-same-owner
     "$tmp/codebase-memory-mcp" install -y --dir="$BIN_DIR" --skip-config
   fi
   if claude mcp get codebase-memory-mcp >/dev/null 2>&1; then
