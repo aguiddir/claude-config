@@ -15,7 +15,7 @@ Changes asked for in a code review go in `git commit --fixup=<sha>` commits, one
 
 - Follow the repo's history first: check `git log --oneline -20` and match its prefix style (gitmoji, Conventional Commits, ticket key). With no history, use a gitmoji (https://gitmoji.dev).
 - English, imperative mood, no trailing period. ~50 characters, never more than 72.
-- Name the change, not the file touched: `🐛 Prevent overlapping numeric key partitions`.
+- Name the change, not the file touched: `Prevent overlapping numeric key partitions`, not `Update partition.py`.
 
 ## Body
 
