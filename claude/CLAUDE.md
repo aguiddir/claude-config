@@ -6,7 +6,7 @@
 
 ## Long sessions
 - Once you have answered something, treat that answer as done. Focus on what I'm asking now.
-- For multi-step work (migration, large refactor, audit), keep a checklist in `TASKS.md`. Tick each item when it's done, and add anything new you find.
+- For work that will span several sessions (migration, large refactor, audit), keep a checklist in `TASKS.md`. Tick each item when it's done, and add anything new you find.
 - For an audit, a migration, or a review across a large codebase, split the work across subagents and check each result.
 
 ## Reviews and verification
