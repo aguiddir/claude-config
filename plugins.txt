@@ -14,7 +14,6 @@ plugin data@claude-plugins-official
 plugin frontend-design@claude-plugins-official
 plugin github@claude-plugins-official
 plugin mongodb@claude-plugins-official
-plugin playwright@claude-plugins-official
 plugin pydantic-ai@claude-plugins-official
 plugin security-guidance@claude-plugins-official
 plugin sonarqube@claude-plugins-official
