@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Docker CLI against the shared dockerbo host (Engine 18.09, API 1.39).
+# Override with DOCKERBO_HOST / DOCKERBO_API_VERSION.
+export DOCKER_HOST="${DOCKERBO_HOST:-tcp://dockerbo.vidal.net:4243}"
+export DOCKER_API_VERSION="${DOCKERBO_API_VERSION:-1.39}"
+exec docker "$@"

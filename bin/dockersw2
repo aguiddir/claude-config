@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Docker CLI against the TLS-protected dockersw2 host.
+# Certificates live in DOCKERSW2_CERT_DIR (default ~/.dockersw2).
+# Compose: `dockersw2 compose ...` (the v2 plugin inherits -H and TLS flags).
+certs="${DOCKERSW2_CERT_DIR:-$HOME/.dockersw2}"
+for f in ca.pem client-jenkins-cert.pem client-jenkins-key.pem; do
+  if [ ! -r "$certs/$f" ]; then
+    echo "dockersw2: missing $certs/$f (set DOCKERSW2_CERT_DIR)" >&2
+    exit 1
+  fi
+done
+exec docker -H "${DOCKERSW2_HOST:-tcp://dockersw2.vidal.net:2376}" --tlsverify \
+  --tlscacert "$certs/ca.pem" \
+  --tlscert "$certs/client-jenkins-cert.pem" \
+  --tlskey "$certs/client-jenkins-key.pem" \
+  "$@"
