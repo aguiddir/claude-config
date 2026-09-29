@@ -20,7 +20,7 @@ Changes asked for in a code review go in `git commit --fixup=<sha>` commits, one
 ## Body
 
 - Mandatory unless the change is a trivial one-liner. Blank line after the subject, wrapped at 72 columns.
-- Explain **why**: the constraint, the failure mode, the option not taken, the context the code alone can't tell.
+- Explain **why**: the constraint, the failure mode, the option not taken, the context the code alone can't tell. Leave out what the diff already shows.
 - For a bugfix, name the root cause, and give steps to reproduce the bug when you can.
 - Prose, a handful of lines. Bullets only for a genuine enumeration.
 - Link public sources when they exist: vendor docs, spec, upstream issue.
@@ -28,7 +28,5 @@ Changes asked for in a code review go in `git commit --fixup=<sha>` commits, one
 
 ## Never
 
-- Don't walk through the edits or restate what the diff shows.
 - Don't describe the session ("as requested", "per review feedback"): the message must make sense read alone in two years.
-- Don't pad with the obvious ("update tests", "refactor code").
 - Don't write an attribution trailer yourself: Claude Code adds it, and the `attribution` setting controls it.
