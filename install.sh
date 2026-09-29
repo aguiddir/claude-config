@@ -104,15 +104,18 @@ if ! $SKIP_PLUGINS; then
   run claude plugin marketplace update claude-plugins-official >/dev/null 2>&1 \
     || run claude plugin marketplace add anthropics/claude-plugins-official >/dev/null \
     || true
-  known_mkt=$(claude plugin marketplace list 2>/dev/null || true)
-  installed=$(claude plugin list 2>/dev/null || true)
+  # Read the JSON output: the human one changes between versions (the
+  # plugin list marker is "❯" in some and ">" in others)
+  ids() { python3 -c 'import json, sys; [print(x[sys.argv[1]]) for x in json.load(sys.stdin) if sys.argv[1] in x]' "$1"; }
+  known_mkt=$(claude plugin marketplace list --json 2>/dev/null | ids repo || true)
+  installed=$(claude plugin list --json 2>/dev/null | ids id || true)
   while read -r kind name; do
     case "$kind" in
       marketplace)
-        if grep -qF "$name" <<<"$known_mkt"; then info "ok       marketplace $name"
+        if grep -qxF "$name" <<<"$known_mkt"; then info "ok       marketplace $name"
         else info "add      marketplace $name"; run claude plugin marketplace add "$name" || true; fi ;;
       plugin)
-        if grep -qF "❯ $name" <<<"$installed"; then info "ok       $name"
+        if grep -qxF "$name" <<<"$installed"; then info "ok       $name"
         else info "install  $name"; run claude plugin install "$name" || true; fi ;;
     esac
   done < <(grep -Ev '^\s*(#|$)' "$REPO/plugins.txt")
