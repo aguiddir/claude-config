@@ -99,8 +99,11 @@ PY
 # --- Plugins --------------------------------------------------------------
 if ! $SKIP_PLUGINS; then
   step "Plugins"
-  # The official index is not fetched until claude has run once
-  run claude plugin marketplace update claude-plugins-official >/dev/null || true
+  # The official index is not fetched until claude has run once, and cloud
+  # sessions don't know the marketplace at all until it is added
+  run claude plugin marketplace update claude-plugins-official >/dev/null 2>&1 \
+    || run claude plugin marketplace add anthropics/claude-plugins-official >/dev/null \
+    || true
   known_mkt=$(claude plugin marketplace list 2>/dev/null || true)
   installed=$(claude plugin list 2>/dev/null || true)
   while read -r kind name; do
