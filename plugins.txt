@@ -1,0 +1,22 @@
+# One entry per line: `marketplace <github-repo>` or `plugin <name>@<marketplace>`.
+# claude-plugins-official is known by default.
+
+marketplace DietrichGebert/ponytail
+
+plugin ai-plugins@claude-plugins-official
+plugin atlassian@claude-plugins-official
+plugin claude-code-setup@claude-plugins-official
+plugin code-review@claude-plugins-official
+plugin code-simplifier@claude-plugins-official
+plugin context7@claude-plugins-official
+plugin data-engineering@claude-plugins-official
+plugin data@claude-plugins-official
+plugin frontend-design@claude-plugins-official
+plugin github@claude-plugins-official
+plugin mongodb@claude-plugins-official
+plugin playwright@claude-plugins-official
+plugin pydantic-ai@claude-plugins-official
+plugin security-guidance@claude-plugins-official
+plugin sonarqube@claude-plugins-official
+plugin superpowers@claude-plugins-official
+plugin ponytail@ponytail
