@@ -58,6 +58,7 @@ done
 step "Claude Code files"
 link "$REPO/claude/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
 link "$REPO/claude/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
+link "$REPO/claude/notify.sh" "$CLAUDE_DIR/notify.sh"
 # Link rules one by one so ones added outside this repo survive
 for f in "$REPO"/claude/rules/*.md; do link "$f" "$CLAUDE_DIR/rules/${f##*/}"; done
 
@@ -95,6 +96,28 @@ else:
         f.write("\n")
     print("    updated  settings.json (previous copy kept as .bak)")
 PY
+
+# --- jq -------------------------------------------------------------------
+# notify.sh parses the hook JSON with jq; distro packages need sudo, so the
+# release binary goes to ~/.local/bin after a SHA-256 check.
+step "jq (for notify.sh)"
+if has jq || [ -x "$BIN_DIR/jq" ]; then
+  info "ok       $("$BIN_DIR/jq" --version 2>/dev/null || jq --version)"
+elif $DRY_RUN; then
+  info "[dry-run] would download jq to ${BIN_DIR/#$HOME/\~}"
+else
+  os=$(uname -s | tr '[:upper:]' '[:lower:]'); [ "$os" = darwin ] && os=macos
+  arch=$(uname -m); case "$arch" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; esac
+  asset="jq-$os-$arch"
+  url="https://github.com/jqlang/jq/releases/latest/download"
+  jqtmp=$(mktemp -d)
+  curl -fsSL -o "$jqtmp/$asset" "$url/$asset"
+  curl -fsSL -o "$jqtmp/sha256sum.txt" "$url/sha256sum.txt"
+  (cd "$jqtmp" && grep " $asset\$" sha256sum.txt | sha256sum -c --quiet -)
+  install -D -m 755 "$jqtmp/$asset" "$BIN_DIR/jq"
+  rm -rf "$jqtmp"
+  info "installed $("$BIN_DIR/jq" --version)"
+fi
 
 # --- Plugins --------------------------------------------------------------
 if ! $SKIP_PLUGINS; then
