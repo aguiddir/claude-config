@@ -11,6 +11,20 @@ cd ~/PycharmProjects/claude-config
 
 Needs `claude`, `python3` and `git`. `npm` is optional (Playwright CLI). Skip parts with `--skip-plugins`, `--skip-mcp`, `--skip-playwright`.
 
+## Just the desktop notifications
+
+A notification when Claude finishes, fails, asks for a permission or asks a question. In [herdr](https://herdr.dev) it names the workspace and the agent session, and stays quiet for the pane you are looking at. Linux only (`notify-send`); needs `jq`.
+
+```bash
+curl -fsSL -o ~/.claude/notify.sh https://raw.githubusercontent.com/aguiddir/claude-config/main/claude/notify.sh
+f=~/.claude/settings.json; [ -f "$f" ] || echo '{}' > "$f"; cp "$f" "$f.bak"
+jq --argjson h '{"hooks":[{"type":"command","command":"bash ~/.claude/notify.sh 2>/dev/null || true"}]}' \
+  'reduce ("Stop","StopFailure","Notification") as $e (.; .hooks[$e] |= ((. // []) | if index([$h]) then . else . + [$h] end))' \
+  "$f.bak" > "$f"
+```
+
+The `jq` step adds the three hooks to your `settings.json` and keeps everything else; running it again adds nothing. Then open `/hooks` once, or restart Claude Code. Titles are in French: edit the `case` in `notify.sh` to change them.
+
 ## What's inside
 
 | Path | Installed as | What it does |
