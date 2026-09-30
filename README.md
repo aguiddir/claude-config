@@ -18,7 +18,8 @@ Needs `claude`, `python3` and `git`. `npm` is optional (Playwright CLI). Skip pa
 | `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` (symlink) | Global instructions: autonomy, long sessions, pre-review format |
 | `claude/rules/git-commit.md` | `~/.claude/rules/` (symlink) | Commit message rules: why over what, fixup commits for review changes |
 | `claude/statusline-command.sh` | `~/.claude/` (symlink) | 3-line status line: repo/git/PR, context/cost, rate limits |
-| `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme |
+| `claude/notify.sh` | `~/.claude/` (symlink) | Desktop notification (`notify-send`) per hook event: done, error, permission, question |
+| `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme, notification hooks |
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
 
 Symlinked files take effect as soon as you edit them here. `settings.json` is merged instead of linked because Claude Code rewrites it (`/config`, `/model`); existing keys and permission rules are kept, and the previous file is saved as `.bak.<date>`.
@@ -26,6 +27,7 @@ Symlinked files take effect as soon as you edit them here. `settings.json` is me
 The installer also sets up:
 
 - **codebase-memory-mcp**: code knowledge-graph MCP server, from the release tarball after a SHA-256 check, registered for Claude Code only.
+- **jq** in `~/.local/bin`, from the release binary after a SHA-256 check, when it is not already installed. `notify.sh` needs it.
 - **Playwright agent CLI** with its skills, when `npm` is available.
 
 ## Sources
