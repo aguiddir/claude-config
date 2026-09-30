@@ -9,6 +9,11 @@
       "name": "notify",
       "source": "./plugins/notify",
       "description": "Desktop notification when Claude finishes, fails, or waits for a permission or an answer"
+    },
+    {
+      "name": "git-commit",
+      "source": "./plugins/git-commit",
+      "description": "Git commit rules: when to commit and push, fixup commits for review feedback, messages that explain why"
     }
   ]
 }

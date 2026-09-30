@@ -22,16 +22,25 @@ A notification when Claude finishes, fails, asks for a permission or asks a ques
 
 Titles are in French: edit the `case` in `plugins/notify/scripts/notify.sh` to change them.
 
+## Just the git commit rules
+
+When to commit and push, `--fixup` commits for review feedback, and messages that explain why rather than what. Claude loads the skill when it writes a commit message or a PR description.
+
+```
+/plugin marketplace add aguiddir/claude-config
+/plugin install git-commit@claude-config
+```
+
 ## What's inside
 
 | Path | Installed as | What it does |
 |---|---|---|
 | `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` (symlink) | Global instructions: autonomy, long sessions, pre-review format |
-| `claude/rules/git-commit.md` | `~/.claude/rules/` (symlink) | Commit message rules: why over what, fixup commits for review changes |
 | `claude/statusline-command.sh` | `~/.claude/` (symlink) | 3-line status line: repo/git/PR, context/cost, rate limits |
 | `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme |
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
 | `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (`notify-send`) per hook event: done, error, permission, question |
+| `plugins/git-commit/` | `~/.claude/rules/git-commit.md` (symlink to its `SKILL.md`) | Commit message rules: why over what, fixup commits for review changes |
 
 Symlinked files take effect as soon as you edit them here. `settings.json` is merged instead of linked because Claude Code rewrites it (`/config`, `/model`); existing keys and permission rules are kept, and the previous file is saved as `.bak.<date>`.
 

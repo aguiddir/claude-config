@@ -58,8 +58,10 @@ done
 step "Claude Code files"
 link "$REPO/claude/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
 link "$REPO/claude/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
-# Link rules one by one so ones added outside this repo survive
-for f in "$REPO"/claude/rules/*.md; do link "$f" "$CLAUDE_DIR/rules/${f##*/}"; done
+# The commit rules are also shared as the git-commit plugin's skill. Linked
+# as a rule here, they load in every session instead of only when the skill
+# triggers; rules ignore the skill frontmatter.
+link "$REPO/plugins/git-commit/skills/git-commit/SKILL.md" "$CLAUDE_DIR/rules/git-commit.md"
 
 # --- settings.json --------------------------------------------------------
 step "Merge settings.json"

@@ -1,3 +1,8 @@
+---
+name: git-commit
+description: Rules for git commit messages, PR descriptions, and when to commit and push. Use before writing any commit message or PR description, running git commit, or pushing a branch.
+---
+
 # Git commit messages
 
 Applies whenever you write a commit message or a PR description.

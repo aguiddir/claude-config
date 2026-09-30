@@ -1,0 +1,7 @@
+{
+  "name": "git-commit",
+  "description": "Git commit rules: when to commit and push, fixup commits for review feedback, and messages that explain why rather than what.",
+  "author": { "name": "aguiddir" },
+  "repository": "https://github.com/aguiddir/claude-config",
+  "license": "MIT"
+}
