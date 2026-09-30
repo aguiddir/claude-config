@@ -58,7 +58,6 @@ done
 step "Claude Code files"
 link "$REPO/claude/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
 link "$REPO/claude/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
-link "$REPO/claude/notify.sh" "$CLAUDE_DIR/notify.sh"
 # Link rules one by one so ones added outside this repo survive
 for f in "$REPO"/claude/rules/*.md; do link "$f" "$CLAUDE_DIR/rules/${f##*/}"; done
 
@@ -98,9 +97,9 @@ else:
 PY
 
 # --- jq -------------------------------------------------------------------
-# notify.sh parses the hook JSON with jq; distro packages need sudo, so the
+# The notify plugin parses the hook JSON with jq; distro packages need sudo, so the
 # release binary goes to ~/.local/bin after a SHA-256 check.
-step "jq (for notify.sh)"
+step "jq (for the notify plugin)"
 if has jq || [ -x "$BIN_DIR/jq" ]; then
   info "ok       $("$BIN_DIR/jq" --version 2>/dev/null || jq --version)"
 elif $DRY_RUN; then
@@ -132,6 +131,13 @@ if ! $SKIP_PLUGINS; then
   ids() { python3 -c 'import json, sys; [print(x[sys.argv[1]]) for x in json.load(sys.stdin) if sys.argv[1] in x]' "$1"; }
   known_mkt=$(claude plugin marketplace list --json 2>/dev/null | ids repo || true)
   installed=$(claude plugin list --json 2>/dev/null | ids id || true)
+  # This repo is a marketplace too (plugins/). Added from the clone, its
+  # plugins load in place, so editing them here applies without an update
+  if claude plugin marketplace list --json 2>/dev/null | ids name | grep -qxF claude-config; then
+    info "ok       marketplace claude-config (this repo)"
+  else
+    info "add      marketplace claude-config (this repo)"; run claude plugin marketplace add "$REPO" || true
+  fi
   while read -r kind name; do
     case "$kind" in
       marketplace)

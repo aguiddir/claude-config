@@ -15,37 +15,5 @@
     }
   },
   "theme": "dark",
-  "includeGitInstructions": false,
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/notify.sh 2>/dev/null || true"
-          }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/notify.sh 2>/dev/null || true"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/notify.sh 2>/dev/null || true"
-          }
-        ]
-      }
-    ]
-  }
+  "includeGitInstructions": false
 }

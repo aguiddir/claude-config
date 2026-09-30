@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/notify.sh 2>/dev/null || true" }] }
+    ],
+    "StopFailure": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/notify.sh 2>/dev/null || true" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/notify.sh 2>/dev/null || true" }] }
+    ]
+  }
+}
