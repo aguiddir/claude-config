@@ -14,9 +14,16 @@ if [ -n "$HERDR_PANE_ID" ]; then
   herdr=${HERDR_BIN_PATH:-herdr}
   ws=$(timeout 2 "$herdr" workspace get "$HERDR_WORKSPACE_ID" 2>/dev/null |
     $jq -r '.result.workspace | "\(.label) (#\(.number))"' 2>/dev/null)
-  agent=$(timeout 2 "$herdr" pane get "$HERDR_PANE_ID" 2>/dev/null |
-    $jq -r '.result.pane | [.agent, .terminal_title_stripped] | map(select(. // "" != "")) | join(" · ")' 2>/dev/null)
+  pane=$(timeout 2 "$herdr" pane get "$HERDR_PANE_ID" 2>/dev/null)
+  agent=$($jq -r '.result.pane | [.agent, .terminal_title_stripped] | map(select(. // "" != "")) | join(" · ")' <<<"$pane" 2>/dev/null)
   where=${ws:-$where}
+
+  # Stay quiet when I am already looking at this pane: shown in herdr and
+  # the active X11 window is a terminal (xprop cannot tell which one).
+  if [ "$($jq -r '.result.pane.focused' <<<"$pane" 2>/dev/null)" = true ]; then
+    win=$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '{print $NF}')
+    xprop -id "$win" WM_CLASS 2>/dev/null | grep -qi terminal && exit 0
+  fi
 fi
 
 case "$event:$type" in
