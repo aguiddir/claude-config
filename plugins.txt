@@ -1,4 +1,5 @@
 # One entry per line: `marketplace <github-repo>` or `plugin <name>@<marketplace>`.
+# The claude-config marketplace is this repo, added by install.sh from the clone.
 # claude-plugins-official is added by install.sh when missing (cloud sessions).
 
 marketplace DietrichGebert/ponytail
@@ -19,3 +20,4 @@ plugin security-guidance@claude-plugins-official
 plugin sonarqube@claude-plugins-official
 plugin superpowers@claude-plugins-official
 plugin ponytail@ponytail
+plugin notify@claude-config

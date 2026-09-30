@@ -1,0 +1,14 @@
+{
+  "name": "claude-config",
+  "owner": {
+    "name": "aguiddir"
+  },
+  "description": "Plugins from aguiddir's Claude Code setup",
+  "plugins": [
+    {
+      "name": "notify",
+      "source": "./plugins/notify",
+      "description": "Desktop notification when Claude finishes, fails, or waits for a permission or an answer"
+    }
+  ]
+}
