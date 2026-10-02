@@ -5,20 +5,28 @@ import type { Step } from '../types'
 import { createdHunk, toPatch } from './patch'
 import type { Hunk } from './patch'
 
-const PANE = 'replay'
 const pending = atom({ plugin: 'replay', key: 'pending' } as const, [])
 const steps = atom({ plugin: 'replay', key: 'steps' } as const, [])
 const at = atom({ plugin: 'replay', key: 'at' } as const, 0)
 // The band offering the replay, from a turn with edits to the next prompt.
 const hint = atom({ plugin: 'replay', key: 'hint' } as const, false)
+// The replay itself, drawn in the band above the prompt: a pane would dock
+// beside a fullscreen transcript, and its placement is not the mod's to pick.
+const isOpen = atom({ plugin: 'replay', key: 'isOpen' } as const, false)
 
 const openReplay = async ($: EngineInterface) => {
   if ((await read($, steps)).length === 0) return false
   await update($, at, () => 0)
   await update($, hint, () => false)
-  await $.ui.open({ id: PANE, title: 'Replay', focus: true, closeOnEscape: true })
+  await update($, isOpen, () => true)
   return true
 }
+
+const go = async ($: EngineInterface, d: number) => {
+  const last = (await read($, steps)).length - 1
+  await update($, at, n => Math.max(0, Math.min(last, n + d)))
+}
+const close = ($: EngineInterface) => update($, isOpen, () => false)
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -64,54 +72,70 @@ export const register: Register = on => {
     return r
   })
 
-  // While the band shows, `r` typed into an empty prompt opens the replay
-  // and never reaches the box; any prompt sent takes the band down.
+  // A letter typed at the prompt never presses a band Button, so the keys are
+  // caught here, in an empty prompt only: `r` opens the replay from the hint,
+  // then `n`, `p` and `q` step and close it. None of them reach the box.
   on('prompt.edit', async ($, e, next) => {
-    const isR = e.text === '' && e.inputText.toLowerCase() === 'r'
-    if (isR && (await read($, hint)) && (await openReplay($))) return { text: e.text, cursor: e.cursor }
+    const key = e.text === '' ? e.inputText.toLowerCase() : ''
+    const consumed = { text: e.text, cursor: e.cursor }
+    if (await read($, isOpen)) {
+      if (key === 'n') return (await go($, 1), consumed)
+      if (key === 'p') return (await go($, -1), consumed)
+      if (key === 'q') return (await close($), consumed)
+    } else if (key === 'r' && (await read($, hint)) && (await openReplay($))) return consumed
     return next(e)
   })
 
+  // Any prompt sent takes the hint and the replay down.
   on('prompt.submit', async ($, e, next) => {
     await update($, hint, () => false)
+    await close($)
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const count = (await read($, steps)).length
-    if (e.props.hasSurvey || !(await read($, hint)) || count === 0) return next(e)
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const list = await read($, steps)
+    if (e.props.hasSurvey || list.length === 0) return next(e)
+    const { Box, Text, Button, Code } = $.ui.resolve(e)
+
+    if (await read($, isOpen)) {
+      const i = Math.min(await read($, at), list.length - 1)
+      const step = list[i]!
+      return (
+        <Box flexDirection="column" borderStyle="round" borderColor="magenta">
+          <Text>
+            {list.map((_, n) => (
+              <Text color={n === i ? 'magenta' : undefined} dimColor={n !== i}>
+                {' '}
+                {n + 1}
+              </Text>
+            ))}
+            {'  '}
+            {step.tool} <Text dimColor>{step.path}</Text>
+          </Text>
+          {step.patch ? (
+            <Code format="diff" source={step.patch} path={step.path} />
+          ) : (
+            <Text dimColor>diff trop long pour s'afficher</Text>
+          )}
+          {step.omitted > 0 && <Text dimColor>… {step.omitted} bloc(s) non affichés</Text>}
+          <Box>
+            <Button key="prev" label="préc." hotkey="p" plain onPress={() => void go($, -1)} />
+            <Text> </Text>
+            <Button key="next" label="suiv." hotkey="n" plain onPress={() => void go($, 1)} />
+            <Text> </Text>
+            <Button key="close" label="fermer" hotkey="q" plain onPress={() => void close($)} />
+          </Box>
+        </Box>
+      )
+    }
+
+    if (!(await read($, hint))) return next(e)
     return (
       <Box>
-        <Text color="magenta">↺ {count} édition(s) au dernier tour · </Text>
+        <Text color="magenta">↺ {list.length} édition(s) au dernier tour · </Text>
         <Button key="replay" label="rejouer" hotkey="r" plain onPress={() => void openReplay($)} />
         <Text dimColor> (ou /replay)</Text>
-      </Box>
-    )
-  })
-
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button, Code } = $.ui.resolve(e)
-    const list = await read($, steps)
-    const i = Math.min(await read($, at), Math.max(0, list.length - 1))
-    const step = list[i]
-    if (!step) return <Text dimColor>Aucune édition à rejouer.</Text>
-    const go = (d: number) => () => update($, at, n => Math.max(0, Math.min(list.length - 1, n + d)))
-    return (
-      <Box flexDirection="column">
-        <Text>
-          <Text color="cyan">
-            {i + 1}/{list.length}
-          </Text>{' '}
-          {step.tool} <Text dimColor>{step.path}</Text>
-        </Text>
-        {step.patch ? <Code format="diff" source={step.patch} path={step.path} /> : <Text dimColor>diff trop long pour s'afficher</Text>}
-        {step.omitted > 0 && <Text dimColor>… {step.omitted} bloc(s) non affichés</Text>}
-        <Box>
-          <Button key="prev" label="Préc." hotkey="p" onPress={go(-1)} />
-          <Button key="next" label="Suiv." hotkey="n" variant="primary" autoFocus onPress={go(1)} />
-          <Button key="close" label="Fermer" hotkey="q" role="dismiss" onPress={() => $.ui.close({ id: PANE })} />
-        </Box>
       </Box>
     )
   })
