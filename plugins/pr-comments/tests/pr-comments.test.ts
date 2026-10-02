@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { hunkTail, reviewPrompt, toPrs } from '../hooks/threads'
+import { hunkTail, reviewPrompt, toEntries, toThreads } from '../hooks/threads'
 
 // Cut at the commented line, as GitHub sends it: the header counts more.
 const HUNK = '@@ -10,8 +10,9 @@ def f():\n a\n+b\n c'
@@ -18,27 +18,40 @@ const node = (id: string, isResolved: boolean, body: string, reply?: string) => 
 const prJson = (number: number, branch: string, nodes: unknown[], author = 'me') => ({
   number, title: `PR ${number}`, url: `https://gh/pr/${number}`, headRefName: branch, author: { login: author }, reviewThreads: { nodes },
 })
-// What the poll's query answers: the user's PRs, and the current branch's.
-const json = (nodes: unknown[], more: unknown[] = [], here: unknown[] = []) => ({
-  data: { mine: { nodes: [prJson(7, 'feat/x', nodes), ...more] }, repository: { pullRequests: { nodes: here } } },
+type PrDef = ReturnType<typeof prJson>
+// What the list query answers: each PR without its threads, its updatedAt
+// moving whenever they do.
+const entry = (p: PrDef) => ({ number: p.number, title: p.title, url: p.url, headRefName: p.headRefName, updatedAt: JSON.stringify(p.reviewThreads) })
+const listOf = (mine: PrDef[], here: PrDef[] = [], reviewing: PrDef[] = []) => ({
+  data: {
+    mine: { nodes: mine.map(entry) },
+    requested: { nodes: reviewing.map(entry) },
+    reviewed: { nodes: [] },
+    repository: { pullRequests: { nodes: here.map(entry) } },
+  },
 })
+// What the detail query answers for one PR.
+const detailOf = (p: PrDef) => ({ data: { repository: { pullRequest: { author: p.author, reviewThreads: p.reviewThreads } } } })
 
 test('unresolved threads, the author having the last word marked answered', async () => {
-  const [pr] = toPrs(json([node('a', false, 'renomme x', 'fait'), node('b', true, 'ok'), node('c', false, 'ajoute un test')]) as never)
-  expect(pr!.threads.map(t => [t.id, t.isAnswered])).toEqual([['a', true], ['c', false]])
-  expect(pr!.threads[0]).toMatchObject({ url: 'https://gh/c/a', hunk: HUNK })
-  expect(reviewPrompt(pr!, pr!.threads.slice(0, 1), 'feat/x')).toBe(
+  const threads = toThreads(detailOf(prJson(7, 'feat/x', [node('a', false, 'renomme x', 'fait'), node('b', true, 'ok'), node('c', false, 'ajoute un test')])) as never)!
+  expect(threads.map(t => [t.id, t.isAnswered])).toEqual([['a', true], ['c', false]])
+  expect(threads[0]).toMatchObject({ url: 'https://gh/c/a', hunk: HUNK })
+  const pr = { number: 7, isReview: false, title: 'PR 7', url: 'https://gh/pr/7', branch: 'feat/x', threads }
+  expect(reviewPrompt(pr, threads.slice(0, 1), 'feat/x')).toBe(
     'Un fil de review de la PR #7 (https://gh/pr/7) :\n\napp/a.py:12\n@bob : renomme x\n@me : fait\n\nCorrige le code, ou dis-moi pourquoi tu ne le ferais pas.',
   )
   // From another branch, Claude is told to go to the PR's first.
-  expect(reviewPrompt(pr!, pr!.threads.slice(0, 1), 'main')).toContain("Ces fils portent sur la branche `feat/x`, pas sur la branche courante (`main`) : passe dessus avant de corriger (`gh pr checkout 7`")
+  expect(reviewPrompt(pr, threads.slice(0, 1), 'main')).toContain("Ces fils portent sur la branche `feat/x`, pas sur la branche courante (`main`) : passe dessus avant de corriger (`gh pr checkout 7`")
+  expect(toThreads({ data: { repository: { pullRequest: null } } })).toBeUndefined()
 })
 
-test("the current branch's PR comes first, each PR once, those without threads left out", async () => {
-  const other = prJson(9, 'feat/y', [node('z', false, 'et là ?')], 'alice')
-  const list = toPrs(json([node('a', false, 'x')], [prJson(8, 'feat/w', [node('r', true, 'ok')]), other], [other]) as never)
-  expect(list.map(p => p.number)).toEqual([9, 7])
-  expect(toPrs({ data: { mine: { nodes: [] }, repository: { pullRequests: { nodes: [] } } } })).toEqual([])
+test("the current branch's PR first, then the user's, then those under review, each once", async () => {
+  const other = prJson(9, 'feat/y', [], 'alice')
+  // PR 9 is the current branch's and under review too: to work on, once.
+  const list = toEntries(listOf([prJson(7, 'feat/x', [])], [other], [other, prJson(5, 'feat/v', [], 'carol')]) as never)
+  expect(list.map(p => [p.number, p.isReview])).toEqual([[9, false], [7, false], [5, true]])
+  expect(toEntries({ data: { mine: { nodes: [] }, repository: { pullRequests: { nodes: [] } } } })).toEqual([])
 })
 
 test('a hunk keeps its last lines under a header counted from them', async () => {
@@ -61,11 +74,20 @@ const setUp = async ($: Engine, on: On) => {
     filled: [] as string[],
     opened: 0,
     closed: 0,
-    // What `gh pr view` answers instead of the PR, and a query held mid-poll.
-    // A failed query (exit code and stderr) instead of the PRs.
+    // A failed list (exit code and stderr) instead of the PRs, and a list held
+    // mid-poll.
     fail: null as null | { exitCode: number; stderr: string },
     head: 'feat/x',
-    more: [] as unknown[],
+    more: [] as PrDef[],
+    reviewing: [] as PrDef[],
+    // How many times each PR's threads were asked.
+    details: {} as Record<number, number>,
+    // GitHub leaving updatedAt alone (as a resolution may), a detail ask
+    // that fails, and one held mid-poll.
+    frozen: null as null | string,
+    detailFails: false,
+    detailHold: null as null | Promise<void>,
+    detailHeld: () => {},
     hold: null as null | Promise<void>,
     held: () => {},
     wrote: () => {},
@@ -83,9 +105,24 @@ const setUp = async ($: Engine, on: On) => {
       if (query.includes('resolveReviewThread')) world.nodes = world.nodes.filter(n => !e.argv.includes(`id=${n.id}`))
       return proc('{}')
     }
+    const mine = [prJson(7, 'feat/x', world.nodes), ...world.more]
+    if (query.includes('pullRequest(number')) {
+      const n = Number(e.argv.find(a => a.startsWith('n='))!.slice(2))
+      world.details[n] = (world.details[n] ?? 0) + 1
+      if (world.detailFails) return proc('', 1, 'error connecting to api.github.com')
+      // Read before any hold: a held ask answers what was true when it asked.
+      const detail = JSON.stringify(detailOf([...mine, ...world.reviewing].find(p => p.number === n)!))
+      if (world.detailHold) {
+        world.detailHeld()
+        await world.detailHold
+      }
+      return proc(detail)
+    }
     if (world.fail) return proc('', world.fail.exitCode, world.fail.stderr)
     // Read before any hold: a held poll answers what was true when it asked.
-    const answer = JSON.stringify(json(world.nodes, world.more))
+    const list = listOf(mine, [], world.reviewing)
+    if (world.frozen) list.data.mine.nodes.forEach(n => (n.updatedAt = world.frozen!))
+    const answer = JSON.stringify(list)
     if (world.hold) {
       world.held()
       await world.hold
@@ -116,7 +153,7 @@ test('c opens the pane; n walks the threads, each with its code and conversation
   const ctx = await setUp($, on)
   const { world, pane } = ctx
   const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-  expect(await band.find({ text: /review non résolue : #7 \(2\)/ })).toBeDefined()
+  expect(await band.find({ text: /à traiter : #7 \(2\)/ })).toBeDefined()
   await band.unmount()
   expect(await typeKey($, 'un ', 'c')).toMatchObject({ text: 'un c' })
   const { clock } = ctx
@@ -210,7 +247,7 @@ test('a failed query keeps the band; outside a GitHub repo clears it', async ($,
   const { world, clock } = await setUp($, on)
   const band = async () => {
     const ui = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-    const found = await ui.find({ text: /review non résolue : #7 \(2\)/ })
+    const found = await ui.find({ text: /à traiter : #7 \(2\)/ })
     await ui.unmount()
     return found
   }
@@ -229,7 +266,7 @@ test('from main: every PR of yours on the band, t to switch, f says which branch
   world.more = [prJson(8, 'feat/w', [node('w', false, 'nomme mieux')])]
   await clock.advance(60_000)
   const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-  expect(await band.find({ text: /review non résolue : #7 \(2\) · #8 \(1\)/ })).toBeDefined()
+  expect(await band.find({ text: /à traiter : #7 \(2\) · #8 \(1\)/ })).toBeDefined()
   await band.unmount()
   const ui = await pane()
   expect(await ui.find({ text: /PR #7 PR 7 · feat\/x/ })).toBeDefined()
@@ -264,6 +301,99 @@ test("a write during a poll still reloads after it, so a resolved thread leaves"
   world.hold = null
   release()
   await resolving
+  await clock.settle()
+  expect(await ui.find({ text: /renomme x/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('PRs under review form their own group on the band and say so in the pane', async ($, on) => {
+  const { world, clock, pane } = await setUp($, on)
+  world.reviewing = [prJson(73, 'feat/z', [node('q', false, 'pourquoi ce choix ?')], 'amercadal')]
+  await clock.advance(60_000)
+  const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+  expect(await band.find({ text: /à traiter : #7 \(2\) · en relecture : #73 \(1\)/ })).toBeDefined()
+  await band.unmount()
+  await $.command.run({ command: 'pr-review', args: '73' } as never)
+  const ui = await pane()
+  expect(await ui.find({ text: /PR #73 PR 73 · en relecture · feat\/z/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test("a PR's threads are asked only when it changed, after a write, or every tenth poll", async ($, on) => {
+  const { world, clock, pane } = await setUp($, on)
+  expect(world.details[7]).toBe(1)
+  await clock.advance(60_000)
+  expect(world.details[7]).toBe(1)
+  // A new thread moves its updatedAt.
+  world.nodes = [...world.nodes, node('c', false, 'et ici ?')]
+  await clock.advance(60_000)
+  expect(world.details[7]).toBe(2)
+  // A reply leaves the list as it was, yet the written PR is asked again.
+  const ui = await pane()
+  await ui.press({ key: 'answer' })
+  await ui.input({ key: 'reply', text: 'ok' })
+  expect(world.details[7]).toBe(3)
+  await ui.unmount()
+  // Polls 4 to 10 ask nothing; the eleventh asks again whatever changed.
+  for (let k = 0; k < 6; k++) await clock.advance(60_000)
+  expect(world.details[7]).toBe(3)
+  await clock.advance(60_000)
+  expect(world.details[7]).toBe(4)
+})
+
+test("a write while a poll asks that PR's threads is read again after, updatedAt unmoved", async ($, on) => {
+  const { world, clock, pane } = await setUp($, on)
+  // A new thread makes the minute's poll ask PR 7; GitHub then leaves its
+  // updatedAt where it is.
+  world.nodes = [...world.nodes, node('c', false, 'et ici ?')]
+  world.frozen = 'after'
+  let release = () => {}
+  world.detailHold = new Promise(r => (release = r))
+  const isHeld = new Promise<void>(r => (world.detailHeld = r))
+  void clock.advance(60_000)
+  await isHeld
+  // Resolved while that ask still holds the old threads.
+  const ui = await pane()
+  const isWritten = new Promise<void>(r => (world.wrote = r))
+  const resolving = ui.press({ key: 'resolve' })
+  await isWritten
+  world.detailHold = null
+  release()
+  await resolving
+  await clock.settle()
+  expect(await ui.find({ text: /renomme x/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test("a refresh poll's failed ask is asked again at the next poll", async ($, on) => {
+  const { world, clock } = await setUp($, on)
+  for (let k = 0; k < 9; k++) await clock.advance(60_000)
+  expect(world.details[7]).toBe(1)
+  // The tenth poll after the first is a refresh; its ask fails.
+  world.detailFails = true
+  await clock.advance(60_000)
+  expect(world.details[7]).toBe(2)
+  world.detailFails = false
+  await clock.advance(60_000)
+  expect(world.details[7]).toBe(3)
+})
+
+test("an ask begun before a write and answered after it does not clear the write's mark", async ($, on) => {
+  const { world, clock, pane } = await setUp($, on)
+  world.nodes = [...world.nodes, node('c', false, 'et ici ?')]
+  world.frozen = 'after'
+  let release = () => {}
+  world.detailHold = new Promise(r => (release = r))
+  const isHeld = new Promise<void>(r => (world.detailHeld = r))
+  void clock.advance(60_000)
+  await isHeld
+  // The resolve is sent and done while that ask still waits on GitHub.
+  const ui = await pane()
+  await ui.press({ key: 'resolve' })
+  expect(world.writes).toEqual([['id=a']])
+  // Its answer, from before the resolve, comes in only now.
+  world.detailHold = null
+  release()
   await clock.settle()
   expect(await ui.find({ text: /renomme x/ })).toBeUndefined()
   await ui.unmount()

@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Pr, Thread } from '../types'
-import { MINE, QUERY, REPLY, RESOLVE, hunkTail, reviewHeader, reviewPrompt, toPrs, where } from './threads'
+import { DETAIL, LIST, MINE, REPLY, RESOLVE, REQUESTED, REVIEWED, hunkTail, reviewHeader, reviewPrompt, toEntries, toThreads, where } from './threads'
 
 const PANE = 'pr-review'
 const prs = atom({ plugin: 'pr-comments', key: 'prs' } as const, [])
@@ -15,8 +15,12 @@ const marked = atom({ plugin: 'pr-comments', key: 'marked' } as const, [])
 const reply = atom({ plugin: 'pr-comments', key: 'reply' } as const, null)
 const busy = atom({ plugin: 'pr-comments', key: 'busy' } as const, null)
 const armed = atom({ plugin: 'pr-comments', key: 'armed' } as const, false)
-// GitHub allows 5000 GraphQL points an hour; one poll costs a few.
+// GitHub allows 5000 GraphQL points an hour: the list costs 1, and so does
+// each changed PR's threads.
 const POLL_MS = 60_000
+// ponytail: every tenth poll asks all threads again, in case a thread
+// resolved by someone else leaves the PR's updatedAt as it was.
+const REFRESH_EVERY = 10
 
 const exec = async ($: EngineInterface, argv: string[]) =>
   $.process.run(argv, { cwd: await $.session.cwd() }).catch(() => undefined)
@@ -31,22 +35,64 @@ const run = async ($: EngineInterface, argv: string[]) => {
 // gh's are not.
 const NO_REPO = /failed to run git|none of the git remotes/
 
+// Each PR's threads as last asked, by number, with the updatedAt they were
+// asked at; a module's own, so a reload asks them all once.
+const details = new Map<number, { updatedAt: string; threads: Thread[] }>()
+// PRs this session wrote to, asked again at the next poll; written counts
+// each PR's writes, so an ask clears the mark only if no write landed
+// while it ran (its answer may predate that write).
+const stale = new Set<number>()
+const written = new Map<number, number>()
+let polls = 0
+
 const poll = async ($: EngineInterface) => {
   const head = (await run($, ['git', 'rev-parse', '--abbrev-ref', 'HEAD'])) ?? ''
-  const r = await exec($, ['gh', 'api', 'graphql', '-F', `mine=${MINE}`, '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `branch=${head}`, '-f', `query=${QUERY}`])
+  const r = await exec($, [
+    'gh', 'api', 'graphql', '-F', `mine=${MINE}`, '-F', `requested=${REQUESTED}`, '-F', `reviewed=${REVIEWED}`,
+    '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `branch=${head}`, '-f', `query=${LIST}`,
+  ])
   if (!r) return
   if (r.exitCode !== 0) return NO_REPO.test(r.stderr) ? update($, prs, () => []) : undefined
+  let entries
   try {
-    const found = toPrs(JSON.parse(r.stdout))
-    const known = new Set((await read($, prs)).flatMap(p => p.threads.map(t => t.id)))
-    await update($, branch, () => head)
-    await update($, prs, () => found)
-    // A thread not seen before arms `c` until the next prompt is sent, so a
-    // message starting with c is only caught right after threads come in.
-    if (found.some(p => p.threads.some(t => !known.has(t.id)))) await update($, armed, () => true)
+    entries = toEntries(JSON.parse(r.stdout))
   } catch {
     // Not JSON: kept as it was, like a blip.
+    return
   }
+  const isRefresh = polls++ % REFRESH_EVERY === 0
+  for (const e of entries) {
+    const known = details.get(e.number)
+    if (known && known.updatedAt === e.updatedAt && !stale.has(e.number) && !isRefresh) continue
+    const writesBefore = written.get(e.number)
+    const out = await run($, ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `n=${e.number}`, '-f', `query=${DETAIL}`])
+    try {
+      const asked = out === undefined ? undefined : toThreads(JSON.parse(out))
+      // A failed ask keeps what was known, marked to be asked again next
+      // poll, a refresh's too.
+      if (asked) {
+        details.set(e.number, { updatedAt: e.updatedAt, threads: asked })
+        if (written.get(e.number) === writesBefore) stale.delete(e.number)
+      } else stale.add(e.number)
+    } catch {
+      // Not JSON: as a failed ask.
+      stale.add(e.number)
+    }
+  }
+  // A PR whose threads could not be asked keeps those on screen, as after a
+  // reload, which empties `details` but not the state: a failed ask never
+  // takes a PR off the band, nor makes its threads look new.
+  const before = await read($, prs)
+  const shown = new Map(before.map(p => [p.number, p.threads]))
+  const found: Pr[] = entries
+    .map(({ updatedAt, ...e }) => ({ ...e, threads: details.get(e.number)?.threads ?? shown.get(e.number) ?? [] }))
+    .filter(p => p.threads.length > 0)
+  const seen = new Set(before.flatMap(p => p.threads.map(t => t.id)))
+  await update($, branch, () => head)
+  await update($, prs, () => found)
+  // A thread not seen before arms `c` until the next prompt is sent, so a
+  // message starting with c is only caught right after threads come in.
+  if (found.some(p => p.threads.some(t => !seen.has(t.id)))) await update($, armed, () => true)
 }
 
 // One poll at a time; one asked for meanwhile (a write's reload) runs once
@@ -142,12 +188,20 @@ const startReply = async ($: EngineInterface) => {
   await $.ui.focus({ requestId: PANE, key: 'reply' }).catch(() => undefined)
 }
 
-// Runs one GitHub write with the pane showing it, then reloads the threads.
+// Runs one GitHub write with the pane showing it, then reloads the threads,
+// the written PR's asked again whatever its updatedAt says. Marked once
+// the write is done, and counted, so that no ask begun before it clears
+// the mark with an answer that predates it.
 const write = async ($: EngineInterface, label: string, argv: string[], done: string) => {
+  const p = await pane($)
   await update($, busy, () => label)
   const out = await run($, argv)
   await update($, busy, () => null)
   if (out === undefined) return $.ui.toast(`✗ ${label} : échec (gh)`)
+  if (p) {
+    stale.add(p.number)
+    written.set(p.number, (written.get(p.number) ?? 0) + 1)
+  }
   $.ui.toast(done)
   await tick($)
 }
@@ -182,6 +236,15 @@ const openWeb = async ($: EngineInterface) => {
 
 const count = (p: Pr) => `#${p.number} (${p.threads.length})`
 
+// `à traiter : #89 (9) · en relecture : #73 (10)`, an empty group left out.
+const groups = (list: readonly Pr[]) => {
+  const todo = list.filter(p => !p.isReview).map(count)
+  const review = list.filter(p => p.isReview).map(count)
+  return [todo.length > 0 && `à traiter : ${todo.join(' · ')}`, review.length > 0 && `en relecture : ${review.join(' · ')}`]
+    .filter(Boolean)
+    .join(' · ')
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
@@ -191,7 +254,7 @@ export const register: Register = on => {
     // `/review` is the built-in /code-review's; a refused name still leaves
     // the band and `c`.
     await $.command
-      .register({ name: 'pr-review', description: 'Open the review threads of your PRs (or PR <number>) in a pane', argumentHint: '[number]' })
+      .register({ name: 'pr-review', description: 'Open the review threads of your PRs and those you review (or PR <number>) in a pane', argumentHint: '[number]' })
       .catch(() => $.ui.toast('pr-comments : /pr-review indisponible, utilise c'))
     return r
   })
@@ -200,10 +263,10 @@ export const register: Register = on => {
     const number = Number(e.args.trim().replace(/^#/, ''))
     if (number) {
       if (!(await read($, prs)).some(p => p.number === number))
-        return { text: `PR #${number} : aucun fil non résolu, ou ni à toi ni sur la branche courante.` }
+        return { text: `PR #${number} : aucun fil non résolu, ou ni à toi, ni en relecture, ni sur la branche courante.` }
       await showPr($, number)
     }
-    return { text: (await openPane($)) ? 'Review ouverte.' : 'Aucun fil de review non résolu sur tes PR ni sur la branche courante.' }
+    return { text: (await openPane($)) ? 'Review ouverte.' : 'Aucun fil de review non résolu sur tes PR, celles que tu relis ou la branche courante.' }
   })
 
   // A letter typed at the prompt never presses a band Button: `c`, in an
@@ -247,7 +310,7 @@ export const register: Register = on => {
         {below}
         <Box>
           <Text color="yellow" wrap="truncate-end">
-            💬 review non résolue : {list.map(count).join(' · ')} ·{' '}
+            💬 {groups(list)} ·{' '}
           </Text>
           <Button key="open" label="ouvrir" hotkey="c" plain onPress={() => void openPane($)} />
           <Text dimColor>{(await read($, armed)) ? ' (c, prompt vide)' : ' (/pr-review)'}</Text>
@@ -279,7 +342,11 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Text wrap="truncate-end">
           <Text bold>PR #{p.number}</Text> {p.title}
-          <Text dimColor> · {p.branch === head ? 'branche courante' : p.branch}</Text>
+          <Text dimColor>
+            {' · '}
+            {p.isReview ? 'en relecture · ' : ''}
+            {p.branch === head ? 'branche courante' : p.branch}
+          </Text>
         </Text>
         {all.length > 1 && (
           <Text wrap="truncate-end" dimColor>

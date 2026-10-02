@@ -1,39 +1,72 @@
 import type { Pr, Thread } from '../types'
 
-// The user's open PRs in the repo, and the current branch's whoever wrote it:
-// one request a poll. `{owner}` and `{repo}` are filled in by `gh api` from
-// the repo it runs in, in -F fields only.
-export const QUERY = `query($mine: String!, $owner: String!, $repo: String!, $branch: String!) {
+// Every poll, one light request lists the PRs to show: the user's open PRs
+// in the repo and the current branch's whoever wrote it (to work on), and
+// the PRs the user reviews, asked or already reviewed, as GitHub drops the
+// request once a review is in. A PR's threads are then asked only when it
+// changed (DETAIL): the threads with their comments cost about 30 times
+// the list. `{owner}` and `{repo}` are filled in by `gh api` in -F fields only.
+export const LIST = `query($mine: String!, $requested: String!, $reviewed: String!, $owner: String!, $repo: String!, $branch: String!) {
   mine: search(query: $mine, type: ISSUE, first: 20) { nodes { ...pr } }
+  requested: search(query: $requested, type: ISSUE, first: 20) { nodes { ...pr } }
+  reviewed: search(query: $reviewed, type: ISSUE, first: 20) { nodes { ...pr } }
   repository(owner: $owner, name: $repo) { pullRequests(headRefName: $branch, states: OPEN, first: 1) { nodes { ...pr } } } }
-fragment pr on PullRequest { number title url headRefName author { login }
-  reviewThreads(first: 100) { nodes { id isResolved isOutdated path line
-    comments(first: 50) { nodes { author { login } body url diffHunk } } } } }`
+fragment pr on PullRequest { number title url headRefName updatedAt }`
 export const MINE = 'repo:{owner}/{repo} is:pr is:open author:@me'
+export const REQUESTED = 'repo:{owner}/{repo} is:pr is:open -author:@me review-requested:@me'
+export const REVIEWED = 'repo:{owner}/{repo} is:pr is:open -author:@me reviewed-by:@me'
+
+export const DETAIL = `query($owner: String!, $repo: String!, $n: Int!) {
+  repository(owner: $owner, name: $repo) { pullRequest(number: $n) { author { login }
+    reviewThreads(first: 100) { nodes { id isResolved isOutdated path line
+      comments(first: 50) { nodes { author { login } body url diffHunk } } } } } } }`
 
 export const REPLY = `mutation($id: ID!, $body: String!) {
   addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $id, body: $body }) { comment { id } } }`
 
 export const RESOLVE = `mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }`
 
-type CommentJson = { author: { login: string } | null; body: string; url: string; diffHunk: string }
-type PrJson = {
-  number?: number; title: string; url: string; headRefName: string; author: { login: string } | null
-  reviewThreads: { nodes: {
-    id: string; isResolved: boolean; isOutdated: boolean; path: string; line: number | null
-    comments: { nodes: CommentJson[] }
-  }[] }
-}
-type PrsJson = {
-  data?: { mine?: { nodes: PrJson[] }; repository?: { pullRequests: { nodes: PrJson[] } } | null }
+type EntryJson = { number?: number; title: string; url: string; headRefName: string; updatedAt: string }
+type ListJson = {
+  data?: {
+    mine?: { nodes: EntryJson[] }
+    requested?: { nodes: EntryJson[] }
+    reviewed?: { nodes: EntryJson[] }
+    repository?: { pullRequests: { nodes: EntryJson[] } } | null
+  }
 }
 
-const toPr = (pr: PrJson & { number: number }): Pr => ({
-  number: pr.number,
-  title: pr.title,
-  url: pr.url,
-  branch: pr.headRefName,
-  threads: pr.reviewThreads.nodes
+// A PR to show, before its threads are known.
+export type Entry = Omit<Pr, 'threads'> & { updatedAt: string }
+
+// Each PR once: those to work on first (the current branch's, then the
+// user's), then those under review.
+export const toEntries = (json: ListJson): Entry[] => {
+  const d = json.data
+  const seen = new Set<number>()
+  const take = (nodes: EntryJson[], isReview: boolean) =>
+    nodes
+      .filter((p): p is EntryJson & { number: number } => typeof p.number === 'number' && !seen.has(p.number) && !!seen.add(p.number))
+      .map(p => ({ number: p.number, isReview, title: p.title, url: p.url, branch: p.headRefName, updatedAt: p.updatedAt }))
+  return [
+    ...take([...(d?.repository?.pullRequests.nodes ?? []), ...(d?.mine?.nodes ?? [])], false),
+    ...take([...(d?.requested?.nodes ?? []), ...(d?.reviewed?.nodes ?? [])], true),
+  ]
+}
+
+type CommentJson = { author: { login: string } | null; body: string; url: string; diffHunk: string }
+type DetailJson = {
+  data?: { repository?: { pullRequest?: { author: { login: string } | null; reviewThreads: { nodes: {
+    id: string; isResolved: boolean; isOutdated: boolean; path: string; line: number | null
+    comments: { nodes: CommentJson[] }
+  }[] } } | null } | null }
+}
+
+// A PR's unresolved threads; undefined when GitHub gave no PR.
+export const toThreads = (json: DetailJson): Thread[] | undefined => {
+  const pr = json.data?.repository?.pullRequest
+  if (!pr) return undefined
+  return pr.reviewThreads.nodes
     .filter(t => !t.isResolved && t.comments.nodes.length > 0)
     .map(t => {
       // A deleted account has no author.
@@ -49,17 +82,7 @@ const toPr = (pr: PrJson & { number: number }): Pr => ({
         comments,
         isAnswered: comments.length > 1 && comments.at(-1)!.author === pr.author?.login,
       }
-    }),
-})
-
-// The PRs with unresolved threads, the current branch's first, each once.
-export const toPrs = (json: PrsJson): Pr[] => {
-  const all = [...(json.data?.repository?.pullRequests.nodes ?? []), ...(json.data?.mine?.nodes ?? [])]
-  const seen = new Set<number>()
-  return all
-    .filter((p): p is PrJson & { number: number } => typeof p.number === 'number' && !seen.has(p.number) && !!seen.add(p.number))
-    .map(toPr)
-    .filter(p => p.threads.length > 0)
+    })
 }
 
 export const where = (t: Thread) => `${t.path}${t.line ? `:${t.line}` : ''}`

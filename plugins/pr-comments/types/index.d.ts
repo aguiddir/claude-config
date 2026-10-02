@@ -14,14 +14,15 @@ export type Thread = {
   isAnswered: boolean
 }
 
-// An open PR with its unresolved threads; branch is its head branch.
-export type Pr = { number: number; title: string; url: string; branch: string; threads: Thread[] }
+// An open PR with its unresolved threads; branch is its head branch, and
+// isReview says the user reviews it rather than works on it.
+export type Pr = { number: number; isReview: boolean; title: string; url: string; branch: string; threads: Thread[] }
 
 declare module 'claude-code' {
   interface PluginState {
     'pr-comments': {
-      // The user's PRs and the current branch's, with unresolved threads,
-      // the current branch's first; the branch the session is on.
+      // The PRs with unresolved threads, those to work on (the current
+      // branch's, the user's) before those under review; the session's branch.
       prs: Pr[]
       branch: string
       // The PR the pane shows, by its number.
