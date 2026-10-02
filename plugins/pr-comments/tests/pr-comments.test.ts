@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { hunkTail, reviewPrompt, toEntries, toThreads } from '../hooks/threads'
+import { cleanTitle, excerpt, hunkTail, reviewPrompt, shortWhere, toEntries, toThreads } from '../hooks/threads'
 
 // Cut at the commented line, as GitHub sends it: the header counts more.
 const HUNK = '@@ -10,8 +10,9 @@ def f():\n a\n+b\n c'
@@ -52,6 +52,16 @@ test("the current branch's PR first, then the user's, then those under review, e
   const list = toEntries(listOf([prJson(7, 'feat/x', [])], [other], [other, prJson(5, 'feat/v', [], 'carol')]) as never)
   expect(list.map(p => [p.number, p.isReview])).toEqual([[9, false], [7, false], [5, true]])
   expect(toEntries({ data: { mine: { nodes: [] }, repository: { pullRequests: { nodes: [] } } } })).toEqual([])
+})
+
+test('a thread by its file name, its folder only between twins; what it is about; a title without its tags', async () => {
+  const t = (path: string, body = 'x') => ({ id: path, path, line: 3, isOutdated: false, url: '', hunk: '', comments: [{ author: 'a', body }], isAnswered: false })
+  const list = [t('a/detail/form.ts'), t('a/create/form.ts'), t('a/b/list.ts')]
+  expect(list.map(x => shortWhere(x, list))).toEqual(['detail/form.ts:3', 'create/form.ts:3', 'list.ts:3'])
+  expect(excerpt(t('f', '\n**Une modification** validée `pendant` une sauvegarde\nsuite'))).toBe('Une modification validée pendant une sauvegarde')
+  expect(excerpt(t('f', 'x'.repeat(100)), 10)).toBe('xxxxxxxxx…')
+  expect(excerpt(t('f', '> reçoit une List<String> brute'))).toBe('reçoit une List<String> brute')
+  expect(cleanTitle('✨ POSO-75: Add RSM selection [DEPLOY_PR][poso75]')).toBe('✨ POSO-75: Add RSM selection')
 })
 
 test('a hunk keeps its last lines under a header counted from them', async () => {
@@ -153,7 +163,7 @@ test('c opens the pane; n walks the threads, each with its code and conversation
   const ctx = await setUp($, on)
   const { world, pane } = ctx
   const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-  expect(await band.find({ text: /à traiter : #7 \(2\)/ })).toBeDefined()
+  expect(await band.find({ text: /à traiter #7 \(2\)/ })).toBeDefined()
   await band.unmount()
   expect(await typeKey($, 'un ', 'c')).toMatchObject({ text: 'un c' })
   const { clock } = ctx
@@ -164,11 +174,11 @@ test('c opens the pane; n walks the threads, each with its code and conversation
   expect(world.opened).toBe(1)
 
   const ui = await pane()
-  expect(await ui.find({ text: /▸ {3}1\. app\/a\.py:12/ })).toBeDefined()
+  expect(await ui.find({ text: /▸  1 a\.py:12/ })).toBeDefined()
   expect(await ui.find({ text: /↩ répondu/ })).toBeDefined()
   expect(await ui.find({ text: /renomme x/ })).toBeDefined()
   await ui.press({ key: 'next' })
-  expect(await ui.find({ text: /▸ {3}2\. app\/a\.py:12/ })).toBeDefined()
+  expect(await ui.find({ text: /▸  2 a\.py:12/ })).toBeDefined()
   expect(await ui.find({ text: /ajoute un test/ })).toBeDefined()
   await ui.press({ key: 'close' })
   expect(world.closed).toBe(1)
@@ -223,7 +233,7 @@ test('r writes a reply posted to GitHub, Esc or an empty Enter gives it up, v re
   await ui.press({ key: 'resolve' })
   expect(world.writes[1]).toEqual(['id=a'])
   // Reloaded: the resolved thread is gone, the next one shown.
-  expect(await ui.find({ text: /▸ {3}1\. app\/a\.py:12/ })).toBeDefined()
+  expect(await ui.find({ text: /▸  1 a\.py:12/ })).toBeDefined()
   expect(await ui.find({ text: /ajoute un test/ })).toBeDefined()
   expect(await ui.find({ text: /renomme x/ })).toBeUndefined()
   await ui.unmount()
@@ -247,7 +257,7 @@ test('a failed query keeps the band; outside a GitHub repo clears it', async ($,
   const { world, clock } = await setUp($, on)
   const band = async () => {
     const ui = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-    const found = await ui.find({ text: /à traiter : #7 \(2\)/ })
+    const found = await ui.find({ text: /à traiter #7 \(2\)/ })
     await ui.unmount()
     return found
   }
@@ -266,12 +276,12 @@ test('from main: every PR of yours on the band, t to switch, f says which branch
   world.more = [prJson(8, 'feat/w', [node('w', false, 'nomme mieux')])]
   await clock.advance(60_000)
   const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-  expect(await band.find({ text: /à traiter : #7 \(2\) · #8 \(1\)/ })).toBeDefined()
+  expect(await band.find({ text: /à traiter #7 \(2\) #8 \(1\)/ })).toBeDefined()
   await band.unmount()
   const ui = await pane()
-  expect(await ui.find({ text: /PR #7 PR 7 · feat\/x/ })).toBeDefined()
+  expect(await ui.find({ text: /branche feat\/x/ })).toBeDefined()
   await ui.press({ key: 'pr' })
-  expect(await ui.find({ text: /PR #8 PR 8 · feat\/w/ })).toBeDefined()
+  expect(await ui.find({ text: /PR #8 PR 8/ })).toBeDefined()
   expect(await ui.find({ text: /nomme mieux/ })).toBeDefined()
   await ui.press({ key: 'fix' })
   expect(world.filled[0]).toMatch(/^Un fil de review de la PR #8/)
@@ -311,11 +321,11 @@ test('PRs under review form their own group on the band and say so in the pane',
   world.reviewing = [prJson(73, 'feat/z', [node('q', false, 'pourquoi ce choix ?')], 'amercadal')]
   await clock.advance(60_000)
   const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-  expect(await band.find({ text: /à traiter : #7 \(2\) · en relecture : #73 \(1\)/ })).toBeDefined()
+  expect(await band.find({ text: /à traiter #7 \(2\) · en relecture #73 \(1\)/ })).toBeDefined()
   await band.unmount()
   await $.command.run({ command: 'pr-review', args: '73' } as never)
   const ui = await pane()
-  expect(await ui.find({ text: /PR #73 PR 73 · en relecture · feat\/z/ })).toBeDefined()
+  expect(await ui.find({ text: /en relecture ▸#73 \(1\)/ })).toBeDefined()
   await ui.unmount()
 })
 
