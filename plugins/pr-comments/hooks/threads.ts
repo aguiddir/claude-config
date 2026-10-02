@@ -130,3 +130,25 @@ export const reviewPrompt = (pr: Pr, threads: readonly Thread[], branch: string)
     ),
     threads.length > 1 ? 'Traite chacun : corrige le code, ou dis-moi pourquoi tu ne le ferais pas.' : 'Corrige le code, ou dis-moi pourquoi tu ne le ferais pas.',
   ].join('\n\n')
+
+// A thread's file by its name alone, with its folder when another thread of
+// the list has a file of the same name.
+export const shortWhere = (t: Thread, list: readonly Thread[]) => {
+  const parts = t.path.split('/')
+  const name = parts.at(-1)!
+  const isTwin = list.some(x => x.path !== t.path && x.path.split('/').at(-1) === name)
+  return `${isTwin && parts.length > 1 ? `${parts.at(-2)}/` : ''}${name}${t.line ? `:${t.line}` : ''}`
+}
+
+// What the thread is about: the first comment's first line, its markdown
+// marks dropped, cut to `max` characters.
+export const excerpt = (t: Thread, max = 90) => {
+  const line = (t.comments[0]?.body ?? '').split('\n').find(l => l.trim()) ?? ''
+  // A quote's or heading's leading mark, emphasis and code marks; `<` and
+  // `>` inside the text stay (`List<String>`).
+  const plain = line.replace(/^\s*[>#]+\s*/, '').replace(/[*_`]+/g, '').replace(/\s+/g, ' ').trim()
+  return plain.length > max ? `${plain.slice(0, max - 1)}…` : plain
+}
+
+// The PR's title without its trailing tags (`[DEPLOY_PR][poso75]`).
+export const cleanTitle = (title: string) => title.replace(/(\s*\[[^\]]*\])+\s*$/, '').trim()

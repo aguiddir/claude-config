@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Pr, Thread } from '../types'
-import { DETAIL, LIST, MINE, REPLY, RESOLVE, REQUESTED, REVIEWED, hunkTail, reviewHeader, reviewPrompt, toEntries, toThreads, where } from './threads'
+import { DETAIL, LIST, MINE, REPLY, RESOLVE, REQUESTED, REVIEWED, cleanTitle, excerpt, hunkTail, reviewHeader, reviewPrompt, shortWhere, toEntries, toThreads, where } from './threads'
 
 const PANE = 'pr-review'
 const prs = atom({ plugin: 'pr-comments', key: 'prs' } as const, [])
@@ -236,13 +236,33 @@ const openWeb = async ($: EngineInterface) => {
 
 const count = (p: Pr) => `#${p.number} (${p.threads.length})`
 
-// `à traiter : #89 (9) · en relecture : #73 (10)`, an empty group left out.
-const groups = (list: readonly Pr[]) => {
-  const todo = list.filter(p => !p.isReview).map(count)
-  const review = list.filter(p => p.isReview).map(count)
-  return [todo.length > 0 && `à traiter : ${todo.join(' · ')}`, review.length > 0 && `en relecture : ${review.join(' · ')}`]
-    .filter(Boolean)
-    .join(' · ')
+type TextElement = ReturnType<EngineInterface['ui']['resolve']>['Text']
+
+// `à traiter #89 (9) · en relecture #73 (10)`, an empty group left out, the
+// PR the pane shows (when given) marked.
+const prGroups = (Text: TextElement, list: readonly Pr[], shown?: number) => {
+  const group = (label: string, ps: readonly Pr[], color: string) =>
+    ps.length === 0
+      ? []
+      : [
+          <Text dimColor>{label} </Text>,
+          ...ps.map((p, k) => (
+            <Text color={color} bold={p.number === shown}>
+              {k > 0 ? ' ' : ''}
+              {p.number === shown ? '▸' : ''}
+              {count(p)}
+            </Text>
+          )),
+        ]
+  const todo = group('à traiter', list.filter(p => !p.isReview), 'yellow')
+  const review = group('en relecture', list.filter(p => p.isReview), 'cyan')
+  return (
+    <Text>
+      {todo}
+      {todo.length > 0 && review.length > 0 ? <Text dimColor> · </Text> : ''}
+      {review}
+    </Text>
+  )
 }
 
 export const register: Register = on => {
@@ -305,15 +325,23 @@ export const register: Register = on => {
     const list = await read($, prs)
     if (e.props.hasSurvey || list.length === 0) return below
     const { Box, Text, Button } = $.ui.resolve(e)
+    const isArmed = await read($, armed)
     return (
       <Box flexDirection="column">
         {below}
         <Box>
-          <Text color="yellow" wrap="truncate-end">
-            💬 {groups(list)} ·{' '}
+          <Text wrap="truncate-end">
+            <Text color="yellow">💬 </Text>
+            {prGroups(Text, list)}
+            {'  '}
           </Text>
-          <Button key="open" label="ouvrir" hotkey="c" plain onPress={() => void openPane($)} />
-          <Text dimColor>{(await read($, armed)) ? ' (c, prompt vide)' : ' (/pr-review)'}</Text>
+          {/* The hotkey only while `c` is caught; else a click, or /pr-review. */}
+          {isArmed ? (
+            <Button key="open" label="ouvrir" hotkey="c" plain onPress={() => void openPane($)} />
+          ) : (
+            <Button key="open" label="ouvrir" plain onPress={() => void openPane($)} />
+          )}
+          {!isArmed && <Text dimColor> ou /pr-review</Text>}
         </Box>
       </Box>
     )
@@ -335,33 +363,46 @@ export const register: Register = on => {
     const replyText = await read($, reply)
     const running = await read($, busy)
     const hunk = hunkTail(t.hunk)
-    const badges = (x: Thread) =>
-      [x.isOutdated && 'obsolète', x.isAnswered && '↩ répondu', sentIds.includes(x.id) && '→ Claude'].filter(Boolean).join(' · ')
+    // A thread's state at a glance, each in its own colour.
+    const badges = (x: Thread) => [
+      x.isAnswered && <Text color="green"> ↩ répondu</Text>,
+      x.isOutdated && <Text color="yellow" dimColor> obsolète</Text>,
+      sentIds.includes(x.id) && <Text color="magenta"> → Claude</Text>,
+    ]
 
     return (
       <Box flexDirection="column">
         <Text wrap="truncate-end">
-          <Text bold>PR #{p.number}</Text> {p.title}
-          <Text dimColor>
-            {' · '}
-            {p.isReview ? 'en relecture · ' : ''}
-            {p.branch === head ? 'branche courante' : p.branch}
-          </Text>
+          <Text bold>PR #{p.number}</Text> {cleanTitle(p.title)}
         </Text>
-        {all.length > 1 && (
-          <Text wrap="truncate-end" dimColor>
-            {all.map(x => (x.number === p.number ? `[${count(x)}]` : count(x))).join('  ')}
-          </Text>
-        )}
-        {list.map((x, n) => (
-          <Text wrap="truncate-end" color={n === i ? 'cyan' : undefined} dimColor={n !== i && x.isAnswered}>
-            {n === i ? '▸' : ' '} {marks.includes(x.id) ? '◉' : ' '} {n + 1}. {where(x)}
-            <Text dimColor> {badges(x)}</Text>
-          </Text>
-        ))}
+        <Text wrap="truncate-end" dimColor>
+          {/* With several PRs, the group line below says which group. */}
+          {all.length > 1 ? '' : p.isReview ? 'en relecture · ' : 'à traiter · '}
+          {p.branch === head ? 'branche courante' : `branche ${p.branch}`}
+        </Text>
+        {all.length > 1 && <Text wrap="truncate-end">{prGroups(Text, all, p.number)}</Text>}
+        <Box marginTop={1} flexDirection="column">
+          {list.map((x, n) => (
+            <Text wrap="truncate-end" dimColor={n !== i && x.isAnswered}>
+              <Text color={n === i ? 'cyan' : undefined} bold={n === i}>
+                {n === i ? '▸' : ' '}
+                {marks.includes(x.id) ? '◉' : ' '}
+                {String(n + 1).padStart(2)} {shortWhere(x, list)}
+              </Text>
+              {badges(x)}
+              <Text dimColor>
+                {'  '}
+                {excerpt(x)}
+              </Text>
+            </Text>
+          ))}
+        </Box>
         <Text dimColor>{'─'.repeat(Math.max(10, e.props.bodyColumns - 2))}</Text>
         <Box>
-          <Text bold>{where(t)} </Text>
+          <Text bold>
+            fil {i + 1}/{list.length}
+          </Text>
+          <Text dimColor wrap="truncate-start"> {where(t)} </Text>
           <Link href={t.url} label="↗ GitHub" />
         </Box>
         {hunk ? <Code format="diff" source={clean(hunk)} path={t.path} /> : null}
