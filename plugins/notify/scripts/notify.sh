@@ -55,4 +55,14 @@ id=$(gdbus call --session --dest org.freedesktop.Notifications \
   '"Claude Code"' "$(cat "$idfile" 2>/dev/null || echo 0)" '""' \
   "$(str "$title${where:+ · $where}")" "$(str "${body:-…}")" '[]' \
   "{'urgency': <byte 1>, 'transient': <true>}" 5000 | sed -E 's/[^ ]* ([0-9]+).*/\1/')
-[ -n "$id" ] && echo "$id" >"$idfile"
+[ -n "$id" ] || exit 0
+echo "$id" >"$idfile"
+
+# GNOME ignores the timeout and keeps the banner until I touch the mouse or
+# keyboard if I was idle when it appeared, so close it myself.
+# ponytail: a replacement within 5 s is closed early by the older timer.
+(sleep 5; gdbus call --session --dest org.freedesktop.Notifications \
+  --object-path /org/freedesktop/Notifications \
+  --method org.freedesktop.Notifications.CloseNotification "$id") \
+  >/dev/null 2>&1 </dev/null &
+disown
