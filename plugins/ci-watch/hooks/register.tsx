@@ -2,12 +2,15 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Build } from '../types'
-import { bar, jobUrl, minutes, repoOf, sonarKeyOf, sonarRan, stageMark, toBuild, toGate } from './jenkins'
+import { bar, frameColor, jobUrl, live, minutes, repoOf, short, sonarKeyOf, sonarRan, stageMark, toBuild, toGate } from './jenkins'
 import type { GateJson, RunJson, StagesJson } from './jenkins'
 
 const build = atom({ plugin: 'ci-watch', key: 'build' } as const, null)
 // The repo /ci points at; null follows the session's own directory.
 const dir = atom({ plugin: 'ci-watch', key: 'dir' } as const, null)
+// Bumped every second while a build runs, so the band's clock moves between
+// polls without asking Jenkins.
+const second = atom({ plugin: 'ci-watch', key: 'second' } as const, 0)
 const POLL_MS = 10_000
 // A finished build stays on the band this long, then the band hides.
 const SHOW_DONE_MS = 15 * 60_000
@@ -114,6 +117,7 @@ const poll = async ($: EngineInterface) => {
 // session.start replaces it instead of adding a loop.
 let isPolling = false
 let timer: Timer | undefined
+let clockTimer: Timer | undefined
 const tick = async ($: EngineInterface) => {
   if (isPolling) return
   isPolling = true
@@ -132,6 +136,12 @@ export const register: Register = on => {
     void tick($)
     timer?.cancel()
     timer = $.clock.every(POLL_MS, () => void tick($))
+    clockTimer?.cancel()
+    clockTimer = $.clock.every(1000, () => {
+      void (async () => {
+        if ((await read($, build))?.isBuilding) await update($, second, n => n + 1)
+      })().catch(() => undefined)
+    })
     return r
   })
 
@@ -146,22 +156,37 @@ export const register: Register = on => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const below = await next(e)
     const b: Build | null = await read($, build)
+    await read($, second)
     if (e.props.hasSurvey || !b || (!b.isBuilding && Date.now() - b.endedAt > SHOW_DONE_MS)) return below
     const { Box, Text, Link } = $.ui.resolve(e)
     const failed = b.stages.find(s => s.status === 'FAILED' || s.status === 'UNSTABLE')
     const current = b.stages.find(s => s.status === 'IN_PROGRESS' || s.status === 'PAUSED_PENDING_INPUT')
+    const color = frameColor(b.isBuilding, b.result)
+    const now = live(b, Date.now())
 
     const head = b.isBuilding ? (
-      <Text>
-        <Text color="cyan">● CI {b.label} #{b.number} </Text>
-        {b.hasEstimate ? <Text color="cyan">{bar(b.percent)}</Text> : ''}
-        {b.hasEstimate ? ` ${b.percent} %` : ''}
-        {current ? ` · ${current.name}` : ''}
-        <Text dimColor>{b.hasEstimate ? ` · reste ~${minutes(b.remainingMs)}` : ` · depuis ${minutes(b.durationMs)}`}</Text>
-      </Text>
+      <Box flexDirection="column">
+        <Text>
+          <Text color={color}>● CI {b.label} #{b.number}</Text>
+          {b.hasEstimate ? (
+            <Text>
+              {'  '}
+              <Text color={color}>{bar(now.percent)}</Text> {now.percent} %
+            </Text>
+          ) : (
+            ''
+          )}
+        </Text>
+        <Text dimColor>
+          {'  '}
+          {current ? `${current.name} · ` : ''}
+          {minutes(now.elapsedMs)}
+          {b.hasEstimate ? ` · reste ~${minutes(now.remainingMs)}` : ''}
+        </Text>
+      </Box>
     ) : (
       <Text>
-        <Text color={b.result === 'SUCCESS' ? 'green' : 'red'}>
+        <Text color={color}>
           {b.result === 'SUCCESS' ? '✓' : '✗'} CI {b.label} #{b.number} {b.result === 'SUCCESS' ? 'réussi' : (b.result ?? 'terminé').toLowerCase()}
         </Text>
         {failed ? ` à l'étape ${failed.name}` : ''}
@@ -172,25 +197,32 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {below}
-        {head}
-        {b.stages.length > 0 && (
-          <Text wrap="truncate-end">
-            {b.stages.map(s => (
-              <Text color={s.status === 'SUCCESS' ? 'green' : s.status === 'IN_PROGRESS' ? 'cyan' : s.status === 'FAILED' ? 'red' : undefined} dimColor={s.status === 'NOT_EXECUTED'}>
-                {stageMark(s.status)} {s.name}{'  '}
-              </Text>
-            ))}
-          </Text>
-        )}
-        {b.gate && (
-          <Text wrap="truncate-end">
-            <Text color={b.gate.status === 'OK' ? 'green' : b.gate.status === 'ERROR' ? 'red' : undefined}>
-              Sonar {b.gate.status === 'OK' ? '✓' : b.gate.status === 'ERROR' ? '✗' : '○'} quality gate {b.gate.status}
+        <Box flexDirection="column" borderStyle="round" borderColor={color} paddingX={1}>
+          {head}
+          {b.stages.length > 0 && (
+            <Text wrap="truncate-end">
+              {b.stages.map(s => (
+                <Text
+                  color={s.status === 'SUCCESS' ? 'green' : s.status === 'IN_PROGRESS' ? 'cyan' : s.status === 'FAILED' ? 'red' : undefined}
+                  dimColor={s.status === 'NOT_EXECUTED'}
+                >
+                  {stageMark(s.status)} {s.name}
+                  {s.status === 'IN_PROGRESS' || s.status === 'NOT_EXECUTED' || !s.durationMs ? '' : ` ${short(s.durationMs)}`}
+                  {'  '}
+                </Text>
+              ))}
             </Text>
-            {b.gate.failed.map(c => ` · ${c.metric} ${c.actual} (seuil ${c.threshold})`).join('')}
-          </Text>
-        )}
-        <Link href={b.url} label={`ouvrir le build #${b.number} dans Jenkins`} />
+          )}
+          {b.gate && (
+            <Text wrap="truncate-end">
+              <Text color={b.gate.status === 'OK' ? 'green' : b.gate.status === 'ERROR' ? 'red' : undefined}>
+                Sonar {b.gate.status === 'OK' ? '✓' : b.gate.status === 'ERROR' ? '✗' : '○'} quality gate {b.gate.status}
+              </Text>
+              {b.gate.failed.map(c => ` · ${c.metric} ${c.actual} (seuil ${c.threshold})`).join('')}
+            </Text>
+          )}
+          <Link href={b.url} label={`↗ ouvrir le build #${b.number} dans Jenkins`} />
+        </Box>
       </Box>
     )
   })

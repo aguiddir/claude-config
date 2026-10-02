@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { bar, jobUrl, minutes, repoOf, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
+import { bar, frameColor, jobUrl, live, minutes, repoOf, short, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
 
 test('repo, job URL and progress', async () => {
   expect(repoOf('git@github.com:softwarevidal/vidal-mcp.git')).toBe('vidal-mcp')
@@ -18,6 +18,14 @@ test('repo, job URL and progress', async () => {
   expect(toBuild('r · main', 'u', running, {}, 900_000).percent).toBe(99)
   const done = { ...running, building: false, result: 'FAILURE', duration: 300_000 }
   expect(toBuild('r · main', 'u', done, {}, 900_000)).toMatchObject({ percent: 100, endedAt: 300_000 })
+})
+
+test('live clock, short durations and frame colour', async () => {
+  expect(live({ startedAt: 0, estimatedMs: 200_000 }, 50_000)).toEqual({ elapsedMs: 50_000, percent: 25, remainingMs: 150_000 })
+  expect(live({ startedAt: 0, estimatedMs: 0 }, 50_000)).toEqual({ elapsedMs: 50_000, percent: 0, remainingMs: 0 })
+  expect(short(4_000)).toBe('4s')
+  expect(short(72_000)).toBe('1m12')
+  expect([frameColor(true, null), frameColor(false, 'SUCCESS'), frameColor(false, 'FAILURE'), frameColor(false, 'UNSTABLE')]).toEqual(['cyan', 'green', 'red', 'yellow'])
 })
 
 test('sonar key and quality gate', async () => {
@@ -45,7 +53,7 @@ const GATE_RED = JSON.stringify({ status: 'ERROR', conditions: [{ metricKey: 'ne
 const setUp = ($: Engine, on: On) => {
   const world = {
     run: { number: 426, building: true, result: null as string | null, timestamp: Date.now() - 60_000, estimatedDuration: 240_000, duration: 0 },
-    stages: [{ name: 'Prepare', status: 'SUCCESS' }, { name: 'SonarQube', status: 'IN_PROGRESS' }],
+    stages: [{ name: 'Prepare', status: 'SUCCESS', durationMillis: 4_000 }, { name: 'SonarQube', status: 'IN_PROGRESS', durationMillis: 9_000 }],
     branchJob: true,
     jenkinsDown: false,
     gh: 0,
@@ -83,7 +91,7 @@ const setUp = ($: Engine, on: On) => {
   }
   const end = (result: string, endedAgoMs: number, sonar = 'SUCCESS') => {
     world.run = { ...world.run, building: false, result, timestamp: Date.now() - endedAgoMs - 100_000, duration: 100_000 }
-    world.stages = [{ name: 'Prepare', status: 'SUCCESS' }, { name: 'SonarQube', status: sonar }]
+    world.stages = [{ name: 'Prepare', status: 'SUCCESS', durationMillis: 4_000 }, { name: 'SonarQube', status: sonar, durationMillis: 72_000 }]
   }
   const start = async () => {
     await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
@@ -96,7 +104,9 @@ test('a running build fills the band; its end toasts the result, then the red ga
   const { world, clock, band, end, start } = setUp($, on)
   await start()
   expect(await band(/● CI vidal-mcp · main #426/)).toBeDefined()
-  expect(await band(/SonarQube/)).toBeDefined()
+  // A finished stage shows its time, the running one does not yet.
+  expect(await band(/✓ Prepare 4s {2}● SonarQube {2}/)).toBeDefined()
+  expect(await band(/ouvrir le build #426 dans Jenkins/)).toBeDefined()
   // The branch has its own job: gh is never asked for the PR.
   expect(world.gh).toBe(0)
 

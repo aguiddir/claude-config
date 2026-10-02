@@ -1,4 +1,5 @@
-export type Stage = { name: string; status: string }
+// durationMs: as Jenkins reports it, so far for a running stage.
+export type Stage = { name: string; status: string; durationMs: number }
 
 // The SonarQube quality gate of the build's branch or PR; failed lists the
 // conditions that broke it.
@@ -10,6 +11,9 @@ export type Build = {
   number: number
   url: string
   isBuilding: boolean
+  // Kept so the band can move the clock every second between polls.
+  startedAt: number
+  estimatedMs: number
   result: string | null
   hasEstimate: boolean
   percent: number
@@ -23,6 +27,6 @@ export type Build = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'ci-watch': { build: Build | null; dir: string | null }
+    'ci-watch': { build: Build | null; dir: string | null; second: number }
   }
 }
