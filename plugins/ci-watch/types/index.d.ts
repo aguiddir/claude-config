@@ -36,6 +36,8 @@ declare module 'claude-code' {
     'ci-watch': {
       build: Build | null
       dir: string | null
+      // `#231` or `data-bridge#231`, from /ci.
+      pr: string | null
       second: number
       attachment: { header: string; context: string } | null
       armed: boolean
