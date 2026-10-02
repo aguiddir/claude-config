@@ -1,6 +1,5 @@
 {
   "name": "replay",
-  "version": "0.1.0",
   "description": "/replay steps through the last turn's file edits as diffs in a pane: prev, next, close",
   "author": { "name": "aguiddir" },
   "repository": "https://github.com/aguiddir/claude-config",
