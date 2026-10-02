@@ -46,6 +46,28 @@ It reads the repo and branch of the directory Claude Code runs in and polls Jenk
 
 The Jenkins host and job folder (`team.software/github`) are set at the top of `plugins/ci-watch/hooks/jenkins.ts`.
 
+## Just the PR comments
+
+A band above the prompt counts the unresolved review threads of the current branch's PR. `c` in an empty prompt (while new threads have come in and no prompt has been sent since; otherwise `/pr-review`) opens them in a pane, one thread at a time: the code it is about, as a diff, and its whole conversation, badged `↩ répondu` when the PR's author has the last word and `obsolète` when it is about older code. In the pane:
+
+| Key | Does |
+|---|---|
+| `n` / `p` | next / previous thread |
+| `x` | mark the thread, for `f` |
+| `a` | mark every thread, or none once they all are |
+| `f` | puts the marked threads (or the one shown) in the prompt box, to read, edit and send to Claude; once sent they are badged `→ Claude` |
+| `r` | writes a reply, posted to GitHub on Enter; Esc gives it up and keeps the pane, as the field takes every letter meanwhile |
+| `v` | resolves the thread on GitHub |
+| `o` | opens the thread in the browser |
+| `q` / Esc | closes the pane |
+
+The keys work while the pane holds the keyboard; if it opened without it, ctrl+x tab or a click gives it. Replies and resolutions go through `gh` with your account, with no confirmation beyond the key. The threads are read from GitHub every minute and after each write. Needs `gh`, logged in, and Claude Code 2.1.287 or later.
+
+```
+/plugin marketplace add aguiddir/claude-config
+/plugin install pr-comments@claude-config
+```
+
 ## What's inside
 
 | Path | Installed as | What it does |
@@ -58,6 +80,7 @@ The Jenkins host and job folder (`team.software/github`) are set at the top of `
 | `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (D-Bus) per hook event: done, error, permission, question |
 | `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
 | `plugins/ci-watch/` | plugin `ci-watch@claude-config` | Band above the prompt following the current branch's Jenkins build stage by stage, with its Sonar quality gate (a mod) |
+| `plugins/pr-comments/` | plugin `pr-comments@claude-config` | Band and pane for the PR's unresolved review threads: send some to Claude, reply, resolve (a mod) |
 
 Symlinked files take effect as soon as you edit them here. `settings.json` is merged instead of linked because Claude Code rewrites it (`/config`, `/model`); existing keys and permission rules are kept, and the previous file is saved as `.bak.<date>`.
 

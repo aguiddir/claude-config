@@ -23,3 +23,4 @@ plugin ponytail@ponytail
 plugin notify@claude-config
 plugin replay@claude-config
 plugin ci-watch@claude-config
+plugin pr-comments@claude-config
