@@ -205,6 +205,15 @@ test('/ci with a PR number or URL follows that PR job, whatever the branch', asy
   expect(await $.command.run({ command: 'ci', args: '#233' } as never)).toMatchObject({ text: expect.stringContaining('vidal-mcp · PR-233 #426') })
 })
 
+test('a build ended hours ago stays hidden until /ci asks for it', async ($, on) => {
+  const { band, end, start } = setUp($, on)
+  end('SUCCESS', 3 * 3_600_000)
+  await start()
+  expect(await band(/#426/)).toBeUndefined()
+  await $.command.run({ command: 'ci', args: '' } as never)
+  expect(await band(/✓ CI vidal-mcp · main #426 réussi/)).toBeDefined()
+})
+
 test('/ci on another repo reads its Sonar key from the repo name, not the session folder', async ($, on) => {
   const { world, end } = setUp($, on)
   on('fs.read', () => ({ value: 'sonar.projectKey=vidal_mcp_key\n' }))

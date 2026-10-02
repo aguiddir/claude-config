@@ -39,6 +39,7 @@ declare module 'claude-code' {
       // `#231` or `data-bridge#231`, from /ci.
       pr: string | null
       second: number
+      askedAt: number
       attachment: { header: string; context: string } | null
       armed: boolean
     }
