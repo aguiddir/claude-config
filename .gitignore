@@ -1,0 +1,2 @@
+# Written by Claude Code when it loads a mod, extending its generated types.
+plugins/*/tsconfig.json
