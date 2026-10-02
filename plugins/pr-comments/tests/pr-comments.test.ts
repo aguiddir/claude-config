@@ -21,9 +21,10 @@ const prJson = (number: number, branch: string, nodes: unknown[], author = 'me')
 type PrDef = ReturnType<typeof prJson>
 // What the list query answers: each PR without its threads, its updatedAt
 // moving whenever they do.
-const entry = (p: PrDef) => ({ number: p.number, title: p.title, url: p.url, headRefName: p.headRefName, updatedAt: JSON.stringify(p.reviewThreads) })
+const entry = (p: PrDef) => ({ number: p.number, title: p.title, url: p.url, headRefName: p.headRefName, updatedAt: JSON.stringify(p.reviewThreads), author: p.author })
 const listOf = (mine: PrDef[], here: PrDef[] = [], reviewing: PrDef[] = []) => ({
   data: {
+    viewer: { login: 'me' },
     mine: { nodes: mine.map(entry) },
     requested: { nodes: reviewing.map(entry) },
     reviewed: { nodes: [] },
@@ -37,10 +38,15 @@ test('unresolved threads, the author having the last word marked answered', asyn
   const threads = toThreads(detailOf(prJson(7, 'feat/x', [node('a', false, 'renomme x', 'fait'), node('b', true, 'ok'), node('c', false, 'ajoute un test')])) as never)!
   expect(threads.map(t => [t.id, t.isAnswered])).toEqual([['a', true], ['c', false]])
   expect(threads[0]).toMatchObject({ url: 'https://gh/c/a', hunk: HUNK })
-  const pr = { number: 7, isReview: false, title: 'PR 7', url: 'https://gh/pr/7', branch: 'feat/x', threads }
+  const pr = { number: 7, isReview: false, isMine: true, author: 'me', title: 'PR 7', url: 'https://gh/pr/7', branch: 'feat/x', threads }
   expect(reviewPrompt(pr, threads.slice(0, 1), 'feat/x')).toBe(
-    'Un fil de review de la PR #7 (https://gh/pr/7) :\n\napp/a.py:12\n@bob : renomme x\n@me : fait\n\nCorrige le code, ou dis-moi pourquoi tu ne le ferais pas.',
+    'Un fil de review de la PR #7 (https://gh/pr/7) :\n\napp/a.py:12\n@bob : renomme x\n@me : fait\n\nCorrige le code, ou dis-moi pourquoi tu ne le ferais pas.\n\n' +
+      "Commite chaque correction en `git commit --fixup=<sha>` du commit qu'elle corrige, puis pousse la branche.",
   )
+  // Another's PR, even on the current branch: fixed locally, never pushed.
+  const theirs = reviewPrompt({ ...pr, isMine: false, author: 'alice' }, threads.slice(0, 1), 'feat/x')
+  expect(theirs).toContain("C'est la PR de @alice : corrige en local, sans commiter ni pousser")
+  expect(theirs).not.toContain('pousse la branche')
   // From another branch, Claude is told to go to the PR's first.
   expect(reviewPrompt(pr, threads.slice(0, 1), 'main')).toContain("Ces fils portent sur la branche `feat/x`, pas sur la branche courante (`main`) : passe dessus avant de corriger (`gh pr checkout 7`")
   expect(toThreads({ data: { repository: { pullRequest: null } } })).toBeUndefined()
@@ -50,7 +56,7 @@ test("the current branch's PR first, then the user's, then those under review, e
   const other = prJson(9, 'feat/y', [], 'alice')
   // PR 9 is the current branch's and under review too: to work on, once.
   const list = toEntries(listOf([prJson(7, 'feat/x', [])], [other], [other, prJson(5, 'feat/v', [], 'carol')]) as never)
-  expect(list.map(p => [p.number, p.isReview])).toEqual([[9, false], [7, false], [5, true]])
+  expect(list.map(p => [p.number, p.isReview, p.isMine])).toEqual([[9, false, false], [7, false, true], [5, true, false]])
   expect(toEntries({ data: { mine: { nodes: [] }, repository: { pullRequests: { nodes: [] } } } })).toEqual([])
 })
 
@@ -326,6 +332,7 @@ test('PRs under review form their own group on the band and say so in the pane',
   await $.command.run({ command: 'pr-review', args: '73' } as never)
   const ui = await pane()
   expect(await ui.find({ text: /en relecture ▸#73 \(1\)/ })).toBeDefined()
+  expect(await ui.find({ text: /branche feat\/z · PR de @amercadal/ })).toBeDefined()
   await ui.unmount()
 })
 

@@ -14,9 +14,19 @@ export type Thread = {
   isAnswered: boolean
 }
 
-// An open PR with its unresolved threads; branch is its head branch, and
-// isReview says the user reviews it rather than works on it.
-export type Pr = { number: number; isReview: boolean; title: string; url: string; branch: string; threads: Thread[] }
+// An open PR with its unresolved threads; branch is its head branch,
+// isReview says the user reviews it rather than works on it, and isMine
+// that the user wrote it: Claude commits and pushes only on those.
+export type Pr = {
+  number: number
+  isReview: boolean
+  isMine: boolean
+  author: string
+  title: string
+  url: string
+  branch: string
+  threads: Thread[]
+}
 
 declare module 'claude-code' {
   interface PluginState {
