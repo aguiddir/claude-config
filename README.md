@@ -22,6 +22,17 @@ A notification when Claude finishes, fails, asks for a permission or asks a ques
 
 Titles are in French: edit the `case` in `plugins/notify/scripts/notify.sh` to change them.
 
+## Just the replay
+
+After a turn that edited files, a band above the prompt offers to replay them: press `r` in an empty prompt, or type `/replay` any time. The edits show one diff at a time above the prompt; `n` and `p` step, `q` closes, the mouse wheel scrolls a long diff. Only `Edit` and `Write` calls are recorded, not changes made through Bash. Needs Claude Code 2.1.287 or later ([mods](https://claude.dev/blog/getting-started-with-claude-code-mods/)).
+
+```
+/plugin marketplace add aguiddir/claude-config
+/plugin install replay@claude-config
+```
+
+Messages are in French: edit the strings in `plugins/replay/hooks/register.tsx` to change them.
+
 ## What's inside
 
 | Path | Installed as | What it does |
