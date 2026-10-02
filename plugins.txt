@@ -21,3 +21,4 @@ plugin sonarqube@claude-plugins-official
 plugin superpowers@claude-plugins-official
 plugin ponytail@ponytail
 plugin notify@claude-config
+plugin replay@claude-config
