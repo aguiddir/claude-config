@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { bar, frameColor, jobUrl, live, minutes, repoOf, short, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
+import { bar, errorLines, frameColor, jobUrl, live, minutes, repoOf, short, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
 
 test('repo, job URL and progress', async () => {
   expect(repoOf('git@github.com:softwarevidal/vidal-mcp.git')).toBe('vidal-mcp')
@@ -26,6 +26,14 @@ test('live clock, short durations and frame colour', async () => {
   expect(short(4_000)).toBe('4s')
   expect(short(72_000)).toBe('1m12')
   expect([frameColor(true, null), frameColor(false, 'SUCCESS'), frameColor(false, 'FAILURE'), frameColor(false, 'UNSTABLE')]).toEqual(['cyan', 'green', 'red', 'yellow'])
+})
+
+test('error lines: each with the line before, pipeline chatter left out, the last ones kept', async () => {
+  const log = ['[Pipeline] sh', '+ pytest', 'tests/a.py:3: in test_x', 'AssertionError: 1 != 2', '[Pipeline] }', 'ERROR: script returned exit code 1', 'Stage "Deploy" skipped due to earlier failure(s)', '', 'Finished: FAILURE'].join('\n')
+  expect(errorLines(log)).toBe('tests/a.py:3: in test_x\nAssertionError: 1 != 2\nERROR: script returned exit code 1')
+  expect(errorLines(log, 2)).toBe('AssertionError: 1 != 2\nERROR: script returned exit code 1')
+  // Nothing names an error: the end of the log.
+  expect(errorLines('a\nb\nc', 2)).toBe('b\nc')
 })
 
 test('sonar key and quality gate', async () => {
@@ -60,6 +68,10 @@ const setUp = ($: Engine, on: On) => {
     cwds: [] as string[],
     gateAsks: [] as unknown[],
     toasts: [] as string[],
+    prompts: [] as string[],
+    consoleReads: 0,
+    contexts: [] as (readonly string[] | undefined)[],
+    filled: [] as string[],
   }
   const clock = mock.clock(on)
   on('session.cwd', () => ({ value: '/repo' }))
@@ -74,12 +86,16 @@ const setUp = ($: Engine, on: On) => {
   on('http.fetch', (_$, e) => {
     if (world.jenkinsDown) return http({}, 503)
     if (!world.branchJob && e.url.includes('/job/main/')) return http({}, 404)
+    if (e.url.endsWith('consoleText')) return world.consoleReads++, { value: { status: 200, ok: true, headers: {}, text: 'checkout\n'.repeat(300) + 'AssertionError: 1 != 2\n' } }
     return e.url.includes('wfapi') ? http({ stages: world.stages }) : http(world.run)
   })
   on('tool.call', { tool: 'mcp__sonarqube__get_project_quality_gate_status' }, (_$, e) => {
     world.gateAsks.push(e)
     return { result: GATE_RED, text: GATE_RED }
   })
+  on('prompt.submit', (_$, e) => (world.prompts.push(e.text), world.contexts.push(e.context), { text: e.text }))
+  on('prompt.fill', (_$, e) => (world.filled.push(e.text), { isFilled: true }))
+  on('prompt.edit', (_$, e) => ({ text: e.text + e.inputText, cursor: e.cursor + e.inputText.length }))
   on('ui.toast', (_$, e) => (world.toasts.push(e.text), { value: undefined }))
   // Beneath the band: an engine that draws nothing there.
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => $.ui.resolve(e).Box({}))
@@ -171,4 +187,70 @@ test('/ci points the band at another repo', async ($, on) => {
   expect(reply).toMatchObject({ text: 'CI suivie : /home/me/PycharmProjects/data-bridge' })
   await clock.settle()
   expect(world.cwds).toContain('/home/me/PycharmProjects/data-bridge')
+})
+
+test('f puts a broken build in the prompt box, with the end of its log and the red gate', async ($, on) => {
+  const { world, clock, band, end, start } = setUp($, on)
+  // The kit's typings leave prompt.edit off the test's $, though it runs it.
+  const prompt = $.prompt as unknown as { edit: (e: unknown) => Promise<{ text: string }> }
+  const typeKey = (text: string, key: string) =>
+    prompt.edit({ origin: { kind: 'composer' }, text, cursor: text.length, start: text.length, end: text.length, inputText: key })
+  await start()
+  // While it runs, f is just a letter.
+  expect(await typeKey('', 'f')).toMatchObject({ text: 'f' })
+  expect(await band(/préparer le prompt/)).toBeUndefined()
+
+  end('FAILURE', 40_000)
+  world.stages.push({ name: 'Deploy', status: 'FAILED', durationMillis: 1_000 })
+  await clock.advance(10_000)
+  expect(await band(/préparer le prompt de correction/)).toBeDefined()
+  // Mid-sentence, f stays a letter.
+  expect(await typeKey('le ', 'f')).toMatchObject({ text: 'le f' })
+  const sent = (await typeKey('', 'f')).text
+  // In the box to read and send, not sent.
+  expect(world.prompts).toEqual([])
+  expect(sent).toContain("FAILURE à l'étape Deploy")
+  // The box holds the error lines, not the console's end.
+  expect(sent).toContain('checkout\nAssertionError: 1 != 2')
+  expect(sent.split('checkout').length - 1).toBe(1)
+  expect(sent).toContain('new_coverage 62.0 (seuil 80)')
+
+  // The band's button fills the box the same way.
+  const ui = await $.ui.mount({ plugin: 'ci-watch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+  await ui.press({ key: 'fix' })
+  await clock.settle()
+  await ui.unmount()
+  expect(world.filled).toEqual([sent])
+  expect(world.prompts).toEqual([])
+
+  // Sent as prepared, or edited: the log's end goes with it, once.
+  await $.prompt.submit({ text: sent.replace('Trouve', 'Regarde le test puis trouve') } as never)
+  expect(world.contexts[0]![0]).toMatch(/^Les dernières lignes du log Jenkins de vidal-mcp · main #426/)
+  expect(world.contexts[0]![0]!.split('checkout').length - 1).toBe(149)
+  await $.prompt.submit({ text: sent } as never)
+  expect(world.contexts[1]).toBeUndefined()
+  // Box retyped: nothing attached.
+  const ui2 = await $.ui.mount({ plugin: 'ci-watch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+  await ui2.press({ key: 'fix' })
+  await ui2.unmount()
+  await $.prompt.submit({ text: 'autre chose' } as never)
+  expect(world.contexts[2]).toBeUndefined()
+  // The console was read once, by the poll, never on a keystroke.
+  expect(world.consoleReads).toBe(1)
+})
+
+test('once a prompt is sent, f is a letter again while the broken build stays on the band', async ($, on) => {
+  const { world, clock, band, end, start } = setUp($, on)
+  const prompt = $.prompt as unknown as { edit: (e: unknown) => Promise<{ text: string }> }
+  const typeKey = (text: string, key: string) =>
+    prompt.edit({ origin: { kind: 'composer' }, text, cursor: text.length, start: text.length, end: text.length, inputText: key })
+  await start()
+  end('FAILURE', 5_000)
+  await clock.advance(10_000)
+  await $.prompt.submit({ text: 'autre chose' } as never)
+  await clock.advance(10_000)
+  // "fix the tests" starts as typed, the button still offered.
+  expect(await typeKey('', 'f')).toMatchObject({ text: 'f' })
+  expect(await band(/préparer le prompt de correction \(ctrl\+x tab puis f\)/)).toBeDefined()
+  expect(world.filled).toEqual([])
 })

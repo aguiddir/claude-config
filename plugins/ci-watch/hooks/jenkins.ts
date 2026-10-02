@@ -91,3 +91,60 @@ export const short = (ms: number) => {
 // The band's frame: cyan while running, then the result's colour.
 export const frameColor = (isBuilding: boolean, result: string | null) =>
   isBuilding ? 'cyan' : result === 'SUCCESS' ? 'green' : result === 'FAILURE' ? 'red' : 'yellow'
+
+// A failed or unstable build, or a red gate: worth handing to Claude. An
+// aborted build was stopped by someone, not broken.
+export const isFixable = (b: Build) =>
+  !b.isBuilding && (b.result === 'FAILURE' || b.result === 'UNSTABLE' || b.gate?.status === 'ERROR')
+
+// ponytail: the whole console, cut to its end, where the error and the
+// output leading to it are; per-stage logs (wfapi/log) if consoles get huge.
+export const tail = (text: string, lines = 150) => text.trimEnd().split('\n').slice(-lines).join('\n')
+
+// The lines worth reading in the box: those naming an error, each with the
+// line before it unless blank or the pipeline's own chatter, the last `max`
+// kept; with none, the log's last lines. Jenkins' own echoes of the failure
+// (skipped stages, the final status) say nothing new.
+const ERROR_LINE = /\b(error|exception|failed|failure|assertionerror|exit code)\b/i
+const ECHO_LINE = /skipped due to earlier failure|^Finished: /
+export const errorLines = (log: string, max = 10) => {
+  const lines = log.split('\n')
+  const kept = new Set<number>()
+  lines.forEach((line, i) => {
+    if (!ERROR_LINE.test(line) || ECHO_LINE.test(line)) return
+    const before = lines[i - 1]
+    if (before?.trim() && !before.startsWith('[Pipeline]') && !ECHO_LINE.test(before)) kept.add(i - 1)
+    kept.add(i)
+  })
+  const picked = [...kept].sort((a, b) => a - b).map(i => lines[i]!)
+  return (picked.length ? picked : lines).slice(-max).join('\n')
+}
+
+// The box's first line, also how the submit hook knows the prompt is still
+// the one `f` prepared and attaches the log to it.
+export const fixHeader = (b: Build) => {
+  const failed = b.stages.find(s => s.status === 'FAILED' || s.status === 'UNSTABLE')
+  return `Le build Jenkins ${b.label} #${b.number} est en ${b.result}${failed ? ` à l'étape ${failed.name}` : ''} : ${b.url}`
+}
+
+// What the band's `f` puts in the box: the failed step with its error lines,
+// and the gate's broken conditions, for Claude to read up on and fix.
+export const fixPrompt = (b: Build, excerpt: string | undefined) => {
+  const parts: string[] = []
+  if (b.result === 'FAILURE' || b.result === 'UNSTABLE') {
+    parts.push(fixHeader(b), excerpt ? `Erreurs :\n\`\`\`\n${excerpt}\n\`\`\`` : `Log : ${b.url}consoleText`)
+  }
+  if (b.gate?.status === 'ERROR') {
+    const conditions = b.gate.failed.map(c => `${c.metric} ${c.actual} (seuil ${c.threshold})`).join(', ')
+    parts.push(
+      `La quality gate SonarQube de ${b.label} est en échec : ${conditions || 'conditions inconnues'}. ` +
+        'Lis les issues et la couverture concernées avec le MCP SonarQube.',
+    )
+  }
+  return [...parts, 'Trouve la cause et corrige-la.'].join('\n\n')
+}
+
+// Attached to the prompt when sent, out of the box: what Claude reads the
+// error lines against.
+export const logContext = (b: Build, log: string) =>
+  `Les dernières lignes du log Jenkins de ${b.label} #${b.number} :\n\`\`\`\n${log}\n\`\`\``

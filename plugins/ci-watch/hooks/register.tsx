@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Build } from '../types'
-import { bar, frameColor, jobUrl, live, minutes, repoOf, short, sonarKeyOf, sonarRan, stageMark, toBuild, toGate } from './jenkins'
+import { bar, errorLines, fixHeader, fixPrompt, frameColor, isFixable, jobUrl, live, minutes, repoOf, short, sonarKeyOf, sonarRan, stageMark, logContext, tail, toBuild, toGate } from './jenkins'
 import type { GateJson, RunJson, StagesJson } from './jenkins'
 
 const build = atom({ plugin: 'ci-watch', key: 'build' } as const, null)
@@ -11,6 +11,8 @@ const dir = atom({ plugin: 'ci-watch', key: 'dir' } as const, null)
 // Bumped every second while a build runs, so the band's clock moves between
 // polls without asking Jenkins.
 const second = atom({ plugin: 'ci-watch', key: 'second' } as const, 0)
+const attachment = atom({ plugin: 'ci-watch', key: 'attachment' } as const, null)
+const armed = atom({ plugin: 'ci-watch', key: 'armed' } as const, false)
 const POLL_MS = 10_000
 // A finished build stays on the band this long, then the band hides.
 const SHOW_DONE_MS = 15 * 60_000
@@ -110,7 +112,39 @@ const poll = async ($: EngineInterface) => {
   // /ci is on the band, never a toast.
   if (isFresh && now.gate?.status === 'ERROR' && (!isSame || before.gate?.status !== 'ERROR'))
     $.ui.toast(`✗ Sonar ${label} : quality gate en échec`)
+  // Read here, once per build, so that `f` never waits on Jenkins.
+  if (!now.isBuilding && (now.result === 'FAILURE' || now.result === 'UNSTABLE')) {
+    if (isSame && before.consoleTail !== undefined) now.consoleTail = before.consoleTail
+    else {
+      const r = await $.http.fetch(`${now.url}consoleText`).catch(() => undefined)
+      now.consoleTail = r?.ok ? tail(r.text) : null
+    }
+  }
   await write(now)
+  // A build turning broken arms `f` until the next prompt is sent, so a
+  // message starting with f is only caught right after the band turns red.
+  if (isFixable(now) && !(isSame && isFixable(before)) && (await read($, dir)) === target) await update($, armed, () => true)
+}
+
+// The band's build, when it is on the band and broken.
+const shown = async ($: EngineInterface) => {
+  const b = await read($, build)
+  return b && isFixable(b) && Date.now() - b.endedAt <= SHOW_DONE_MS ? b : null
+}
+
+// The failure as a prompt for the box, its error lines only; the log's end
+// waits to be attached when that prompt is sent.
+const fixText = async ($: EngineInterface) => {
+  const b = await shown($)
+  if (!b) return undefined
+  const log = b.consoleTail ?? undefined
+  await update($, attachment, () => (log ? { header: fixHeader(b), context: logContext(b, log) } : null))
+  return fixPrompt(b, log ? errorLines(log) : undefined)
+}
+
+const fillFix = async ($: EngineInterface) => {
+  const text = await fixText($)
+  if (text) await $.prompt.fill({ text })
 }
 
 // One poll at a time, timer and /ci alike; one timer per module, so a second
@@ -153,12 +187,30 @@ export const register: Register = on => {
     return { text: path ? `CI suivie : ${path}` : 'CI suivie : le répertoire de la session' }
   })
 
+  // A letter typed at the prompt never presses a band Button: `f`, in an
+  // empty prompt while armed, is caught here; otherwise the band's button.
+  on('prompt.edit', async ($, e, next) => {
+    const isKey = e.text === '' && e.inputText.toLowerCase() === 'f' && (await read($, armed))
+    const text = isKey ? await fixText($) : undefined
+    return text ? { text, cursor: text.length } : next(e)
+  })
+
+  // The log goes with the prepared prompt only: the box emptied or retyped
+  // sends nothing more. Any submit spends it, and disarms `f`.
+  on('prompt.submit', async ($, e, next) => {
+    await update($, armed, () => false)
+    const a = await read($, attachment)
+    if (!a) return next(e)
+    await update($, attachment, () => null)
+    return e.text.includes(a.header) ? next({ ...e, context: [...(e.context ?? []), a.context] }) : next(e)
+  })
+
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const below = await next(e)
     const b: Build | null = await read($, build)
     await read($, second)
     if (e.props.hasSurvey || !b || (!b.isBuilding && Date.now() - b.endedAt > SHOW_DONE_MS)) return below
-    const { Box, Text, Link } = $.ui.resolve(e)
+    const { Box, Text, Link, Button } = $.ui.resolve(e)
     const failed = b.stages.find(s => s.status === 'FAILED' || s.status === 'UNSTABLE')
     const current = b.stages.find(s => s.status === 'IN_PROGRESS' || s.status === 'PAUSED_PENDING_INPUT')
     const color = frameColor(b.isBuilding, b.result)
@@ -222,6 +274,12 @@ export const register: Register = on => {
             </Text>
           )}
           <Link href={b.url} label={`↗ ouvrir le build #${b.number} dans Jenkins`} />
+          {isFixable(b) && (
+            <Box>
+              <Button key="fix" label="préparer le prompt de correction" hotkey="f" plain onPress={() => void fillFix($)} />
+              {(await read($, armed)) ? <Text dimColor> (f, prompt vide)</Text> : <Text dimColor> (ctrl+x tab puis f)</Text>}
+            </Box>
+          )}
         </Box>
       </Box>
     )
