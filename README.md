@@ -33,6 +33,19 @@ After a turn that edited files, a band above the prompt offers to replay them: p
 
 Messages are in French: edit the strings in `plugins/replay/hooks/register.tsx` to change them.
 
+## Just the CI watch
+
+For Vidal repos built on `jenkins.vidal.net`. A band above the prompt follows the Jenkins build of the current branch, or of its PR (`PR-<n>`) when the branch has no job of its own: a progress bar from Jenkins' estimated duration, the stage running, each stage's state, and a link to the build. When the build ends, a toast gives its result. Once the build's own SonarQube stage has run, the band shows the quality gate of the branch or PR with the conditions that failed, read 30 seconds after the end so that it is this build's analysis, and a toast says when it fails. A finished build stays on the band for 15 minutes.
+
+It reads the repo and branch of the directory Claude Code runs in and polls Jenkins every 10 seconds, anonymously, from the Vidal network. `/ci <path>` follows another repo, `/ci` alone goes back to the session's directory. Needs `gh` (to find the PR) and, for the quality gate, the SonarQube MCP server connected in Claude Code. Needs Claude Code 2.1.287 or later.
+
+```
+/plugin marketplace add aguiddir/claude-config
+/plugin install ci-watch@claude-config
+```
+
+The Jenkins host and job folder (`team.software/github`) are set at the top of `plugins/ci-watch/hooks/jenkins.ts`.
+
 ## What's inside
 
 | Path | Installed as | What it does |
@@ -44,6 +57,7 @@ Messages are in French: edit the strings in `plugins/replay/hooks/register.tsx` 
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
 | `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (`notify-send`) per hook event: done, error, permission, question |
 | `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
+| `plugins/ci-watch/` | plugin `ci-watch@claude-config` | Band above the prompt following the current branch's Jenkins build stage by stage, with its Sonar quality gate (a mod) |
 
 Symlinked files take effect as soon as you edit them here. `settings.json` is merged instead of linked because Claude Code rewrites it (`/config`, `/model`); existing keys and permission rules are kept, and the previous file is saved as `.bak.<date>`.
 

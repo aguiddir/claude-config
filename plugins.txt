@@ -22,3 +22,4 @@ plugin superpowers@claude-plugins-official
 plugin ponytail@ponytail
 plugin notify@claude-config
 plugin replay@claude-config
+plugin ci-watch@claude-config
