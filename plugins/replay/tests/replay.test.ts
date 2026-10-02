@@ -60,3 +60,18 @@ test("a turn's edits are offered, then replayed above the prompt with r, n, p, q
   expect(await typeKey('', 'n')).toMatchObject({ text: 'n' })
   expect(await typeKey('', 'r')).toMatchObject({ text: 'r' })
 })
+
+test('a turn without edits leaves nothing to replay', async ($, on) => {
+  on('tool.call', { tool: 'Edit' }, (_$, e) => ({ result: { ...EDIT.result, filePath: e.file_path } }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: 'done' }))
+  const turn = async (turnId: string, edit: boolean) => {
+    await $.turn.start({ text: 'go', turnId })
+    if (edit) await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b' })
+    await $.turn.complete({ reason: 'answer', answer: 'done', durationMs: 1, isAborted: false, turnId })
+  }
+  await turn('t1', true)
+  await turn('t2', false)
+  const reply = await $.command.run({ command: 'replay', args: '' } as never)
+  expect(reply).toMatchObject({ text: 'Aucune édition au dernier tour.' })
+})

@@ -65,9 +65,11 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
     const recorded = await read($, pending)
-    if (!e.agentId && recorded.length) {
+    // Every main turn replaces the replay, an empty one included: /replay
+    // is the last turn's, never an older one's.
+    if (!e.agentId) {
       await update($, steps, () => recorded)
-      await update($, hint, () => true)
+      if (recorded.length) await update($, hint, () => true)
     }
     return r
   })
