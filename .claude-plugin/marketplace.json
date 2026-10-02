@@ -14,6 +14,11 @@
       "name": "replay",
       "source": "./plugins/replay",
       "description": "/replay, or r after a turn, steps through its file edits as diffs above the prompt"
+    },
+    {
+      "name": "ci-watch",
+      "source": "./plugins/ci-watch",
+      "description": "A band above the prompt that follows the Jenkins build of the current branch, stage by stage, with its Sonar quality gate"
     }
   ]
 }

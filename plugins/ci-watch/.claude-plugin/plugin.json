@@ -1,0 +1,8 @@
+{
+  "name": "ci-watch",
+  "description": "A band above the prompt that follows the Jenkins build of the current branch, stage by stage",
+  "author": { "name": "aguiddir" },
+  "repository": "https://github.com/aguiddir/claude-config",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}
