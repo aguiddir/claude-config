@@ -9,6 +9,11 @@
       "name": "notify",
       "source": "./plugins/notify",
       "description": "Desktop notification when Claude finishes, fails, or waits for a permission or an answer"
+    },
+    {
+      "name": "replay",
+      "source": "./plugins/replay",
+      "description": "/replay, or r after a turn, steps through its file edits as diffs above the prompt"
     }
   ]
 }

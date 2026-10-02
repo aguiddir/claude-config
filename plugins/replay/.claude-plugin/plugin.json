@@ -1,0 +1,8 @@
+{
+  "name": "replay",
+  "description": "/replay, or r after a turn, steps through its file edits as diffs above the prompt",
+  "author": { "name": "aguiddir" },
+  "repository": "https://github.com/aguiddir/claude-config",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

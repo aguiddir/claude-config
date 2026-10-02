@@ -32,6 +32,7 @@ Titles are in French: edit the `case` in `plugins/notify/scripts/notify.sh` to c
 | `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme |
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
 | `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (`notify-send`) per hook event: done, error, permission, question |
+| `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
 
 Symlinked files take effect as soon as you edit them here. `settings.json` is merged instead of linked because Claude Code rewrites it (`/config`, `/model`); existing keys and permission rules are kept, and the previous file is saved as `.bak.<date>`.
 
