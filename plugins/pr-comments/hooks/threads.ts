@@ -1,10 +1,15 @@
 import type { Pr, Thread } from '../types'
 
-// `{owner}` and `{repo}` are filled in by `gh api` from the repo it runs in.
-export const QUERY = `query($owner: String!, $repo: String!, $n: Int!) {
-  repository(owner: $owner, name: $repo) { pullRequest(number: $n) { url author { login }
-    reviewThreads(first: 100) { nodes { id isResolved isOutdated path line
-      comments(first: 50) { nodes { author { login } body url diffHunk } } } } } } }`
+// The user's open PRs in the repo, and the current branch's whoever wrote it:
+// one request a poll. `{owner}` and `{repo}` are filled in by `gh api` from
+// the repo it runs in, in -F fields only.
+export const QUERY = `query($mine: String!, $owner: String!, $repo: String!, $branch: String!) {
+  mine: search(query: $mine, type: ISSUE, first: 20) { nodes { ...pr } }
+  repository(owner: $owner, name: $repo) { pullRequests(headRefName: $branch, states: OPEN, first: 1) { nodes { ...pr } } } }
+fragment pr on PullRequest { number title url headRefName author { login }
+  reviewThreads(first: 100) { nodes { id isResolved isOutdated path line
+    comments(first: 50) { nodes { author { login } body url diffHunk } } } } }`
+export const MINE = 'repo:{owner}/{repo} is:pr is:open author:@me'
 
 export const REPLY = `mutation($id: ID!, $body: String!) {
   addPullRequestReviewThreadReply(input: { pullRequestReviewThreadId: $id, body: $body }) { comment { id } } }`
@@ -12,17 +17,23 @@ export const REPLY = `mutation($id: ID!, $body: String!) {
 export const RESOLVE = `mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }`
 
 type CommentJson = { author: { login: string } | null; body: string; url: string; diffHunk: string }
-type ThreadsJson = {
-  data?: { repository?: { pullRequest?: { url: string; author: { login: string } | null; reviewThreads: { nodes: {
+type PrJson = {
+  number?: number; title: string; url: string; headRefName: string; author: { login: string } | null
+  reviewThreads: { nodes: {
     id: string; isResolved: boolean; isOutdated: boolean; path: string; line: number | null
     comments: { nodes: CommentJson[] }
-  }[] } } | null } | null }
+  }[] }
+}
+type PrsJson = {
+  data?: { mine?: { nodes: PrJson[] }; repository?: { pullRequests: { nodes: PrJson[] } } | null }
 }
 
-export const toPr = (number: number, json: ThreadsJson): Pr | null => {
-  const pr = json.data?.repository?.pullRequest
-  if (!pr) return null
-  const threads: Thread[] = pr.reviewThreads.nodes
+const toPr = (pr: PrJson & { number: number }): Pr => ({
+  number: pr.number,
+  title: pr.title,
+  url: pr.url,
+  branch: pr.headRefName,
+  threads: pr.reviewThreads.nodes
     .filter(t => !t.isResolved && t.comments.nodes.length > 0)
     .map(t => {
       // A deleted account has no author.
@@ -38,8 +49,17 @@ export const toPr = (number: number, json: ThreadsJson): Pr | null => {
         comments,
         isAnswered: comments.length > 1 && comments.at(-1)!.author === pr.author?.login,
       }
-    })
-  return { number, url: pr.url, threads }
+    }),
+})
+
+// The PRs with unresolved threads, the current branch's first, each once.
+export const toPrs = (json: PrsJson): Pr[] => {
+  const all = [...(json.data?.repository?.pullRequests.nodes ?? []), ...(json.data?.mine?.nodes ?? [])]
+  const seen = new Set<number>()
+  return all
+    .filter((p): p is PrJson & { number: number } => typeof p.number === 'number' && !seen.has(p.number) && !!seen.add(p.number))
+    .map(toPr)
+    .filter(p => p.threads.length > 0)
 }
 
 export const where = (t: Thread) => `${t.path}${t.line ? `:${t.line}` : ''}`
@@ -68,10 +88,17 @@ export const reviewHeader = (pr: Pr, count: number) =>
   `${count > 1 ? `${count} fils` : 'Un fil'} de review de la PR #${pr.number} (${pr.url}) :`
 
 // What `f` puts in the box: each thread where it sits, its code and its
-// whole conversation, so Claude also sees the replies already made.
-export const reviewPrompt = (pr: Pr, threads: readonly Thread[]) =>
+// whole conversation, so Claude also sees the replies already made. When
+// the session is on another branch, Claude is told to go to the PR's first.
+export const reviewPrompt = (pr: Pr, threads: readonly Thread[], branch: string) =>
   [
     reviewHeader(pr, threads.length),
+    ...(branch === pr.branch
+      ? []
+      : [
+          `Ces fils portent sur la branche \`${pr.branch}\`, pas sur la branche courante (\`${branch}\`) : ` +
+            `passe dessus avant de corriger (\`gh pr checkout ${pr.number}\`, ou un worktree s'il y a des modifications en cours).`,
+        ]),
     ...threads.map(t =>
       [
         `${where(t)}${t.isOutdated ? ' (sur une version antérieure du code)' : ''}`,

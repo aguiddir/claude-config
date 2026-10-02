@@ -48,14 +48,15 @@ The Jenkins host and job folder (`team.software/github`) are set at the top of `
 
 ## Just the PR comments
 
-A band above the prompt counts the unresolved review threads of the current branch's PR. `c` in an empty prompt (while new threads have come in and no prompt has been sent since; otherwise `/pr-review`) opens them in a pane, one thread at a time: the code it is about, as a diff, and its whole conversation, badged `↩ répondu` when the PR's author has the last word and `obsolète` when it is about older code. In the pane:
+A band above the prompt lists your open PRs in the repo that have unresolved review threads, with the current branch's PR first whoever wrote it, so it works from `main` too: `💬 review non résolue : #89 (10) · #15 (1)`. `c` in an empty prompt (while new threads have come in and no prompt has been sent since; otherwise `/pr-review`, or `/pr-review 89` for one PR) opens them in a pane, one thread at a time: the code it is about, as a diff, and its whole conversation, badged `↩ répondu` when the PR's author has the last word and `obsolète` when it is about older code. In the pane:
 
 | Key | Does |
 |---|---|
 | `n` / `p` | next / previous thread |
+| `t` | next PR, when several have threads |
 | `x` | mark the thread, for `f` |
 | `a` | mark every thread, or none once they all are |
-| `f` | puts the marked threads (or the one shown) in the prompt box, to read, edit and send to Claude; once sent they are badged `→ Claude` |
+| `f` | puts the marked threads (or the one shown) in the prompt box, to read, edit and send to Claude; once sent they are badged `→ Claude`. When the PR is not on the current branch, the prompt tells Claude to check it out first (or use a worktree if changes are in progress) |
 | `r` | writes a reply, posted to GitHub on Enter; Esc gives it up and keeps the pane, as the field takes every letter meanwhile |
 | `v` | resolves the thread on GitHub |
 | `o` | opens the thread in the browser |

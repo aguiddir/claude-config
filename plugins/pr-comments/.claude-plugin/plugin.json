@@ -1,6 +1,6 @@
 {
   "name": "pr-comments",
-  "description": "A pane to work through the review threads of the current branch's PR: hand some to Claude, reply, resolve",
+  "description": "A pane to work through the review threads of your PRs and the current branch's: hand some to Claude, reply, resolve",
   "author": { "name": "aguiddir" },
   "repository": "https://github.com/aguiddir/claude-config",
   "license": "MIT",

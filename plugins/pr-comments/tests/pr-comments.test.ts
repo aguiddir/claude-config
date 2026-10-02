@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { hunkTail, reviewPrompt, toPr } from '../hooks/threads'
+import { hunkTail, reviewPrompt, toPrs } from '../hooks/threads'
 
 // Cut at the commented line, as GitHub sends it: the header counts more.
 const HUNK = '@@ -10,8 +10,9 @@ def f():\n a\n+b\n c'
@@ -15,16 +15,30 @@ const node = (id: string, isResolved: boolean, body: string, reply?: string) => 
     ],
   },
 })
-const json = (nodes: unknown[]) => ({ data: { repository: { pullRequest: { url: 'https://gh/pr/7', author: { login: 'me' }, reviewThreads: { nodes } } } } })
+const prJson = (number: number, branch: string, nodes: unknown[], author = 'me') => ({
+  number, title: `PR ${number}`, url: `https://gh/pr/${number}`, headRefName: branch, author: { login: author }, reviewThreads: { nodes },
+})
+// What the poll's query answers: the user's PRs, and the current branch's.
+const json = (nodes: unknown[], more: unknown[] = [], here: unknown[] = []) => ({
+  data: { mine: { nodes: [prJson(7, 'feat/x', nodes), ...more] }, repository: { pullRequests: { nodes: here } } },
+})
 
 test('unresolved threads, the author having the last word marked answered', async () => {
-  const pr = toPr(7, json([node('a', false, 'renomme x', 'fait'), node('b', true, 'ok'), node('c', false, 'ajoute un test')]) as never)!
-  expect(pr.threads.map(t => [t.id, t.isAnswered])).toEqual([['a', true], ['c', false]])
-  expect(pr.threads[0]).toMatchObject({ url: 'https://gh/c/a', hunk: HUNK })
-  expect(reviewPrompt(pr, pr.threads.slice(0, 1))).toBe(
+  const [pr] = toPrs(json([node('a', false, 'renomme x', 'fait'), node('b', true, 'ok'), node('c', false, 'ajoute un test')]) as never)
+  expect(pr!.threads.map(t => [t.id, t.isAnswered])).toEqual([['a', true], ['c', false]])
+  expect(pr!.threads[0]).toMatchObject({ url: 'https://gh/c/a', hunk: HUNK })
+  expect(reviewPrompt(pr!, pr!.threads.slice(0, 1), 'feat/x')).toBe(
     'Un fil de review de la PR #7 (https://gh/pr/7) :\n\napp/a.py:12\n@bob : renomme x\n@me : fait\n\nCorrige le code, ou dis-moi pourquoi tu ne le ferais pas.',
   )
-  expect(toPr(7, { data: { repository: { pullRequest: null } } })).toBeNull()
+  // From another branch, Claude is told to go to the PR's first.
+  expect(reviewPrompt(pr!, pr!.threads.slice(0, 1), 'main')).toContain("Ces fils portent sur la branche `feat/x`, pas sur la branche courante (`main`) : passe dessus avant de corriger (`gh pr checkout 7`")
+})
+
+test("the current branch's PR comes first, each PR once, those without threads left out", async () => {
+  const other = prJson(9, 'feat/y', [node('z', false, 'et là ?')], 'alice')
+  const list = toPrs(json([node('a', false, 'x')], [prJson(8, 'feat/w', [node('r', true, 'ok')]), other], [other]) as never)
+  expect(list.map(p => p.number)).toEqual([9, 7])
+  expect(toPrs({ data: { mine: { nodes: [] }, repository: { pullRequests: { nodes: [] } } } })).toEqual([])
 })
 
 test('a hunk keeps its last lines under a header counted from them', async () => {
@@ -48,7 +62,10 @@ const setUp = async ($: Engine, on: On) => {
     opened: 0,
     closed: 0,
     // What `gh pr view` answers instead of the PR, and a query held mid-poll.
-    view: null as null | { exitCode: number; stderr: string },
+    // A failed query (exit code and stderr) instead of the PRs.
+    fail: null as null | { exitCode: number; stderr: string },
+    head: 'feat/x',
+    more: [] as unknown[],
     hold: null as null | Promise<void>,
     held: () => {},
     wrote: () => {},
@@ -58,7 +75,7 @@ const setUp = async ($: Engine, on: On) => {
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
   on('process.run', async (_$, e) => {
-    if (e.argv[1] === 'pr') return world.view ? proc('', world.view.exitCode, world.view.stderr) : proc('7')
+    if (e.argv[0] === 'git') return proc(world.head)
     const query = e.argv.find(a => a.startsWith('query='))!
     if (query.includes('mutation')) {
       world.writes.push(e.argv.filter(a => a.startsWith('id=') || a.startsWith('body=')))
@@ -66,8 +83,9 @@ const setUp = async ($: Engine, on: On) => {
       if (query.includes('resolveReviewThread')) world.nodes = world.nodes.filter(n => !e.argv.includes(`id=${n.id}`))
       return proc('{}')
     }
+    if (world.fail) return proc('', world.fail.exitCode, world.fail.stderr)
     // Read before any hold: a held poll answers what was true when it asked.
-    const answer = JSON.stringify(json(world.nodes))
+    const answer = JSON.stringify(json(world.nodes, world.more))
     if (world.hold) {
       world.held()
       await world.hold
@@ -98,7 +116,7 @@ test('c opens the pane; n walks the threads, each with its code and conversation
   const ctx = await setUp($, on)
   const { world, pane } = ctx
   const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-  expect(await band.find({ text: /2 fils de review non résolus · PR #7/ })).toBeDefined()
+  expect(await band.find({ text: /review non résolue : #7 \(2\)/ })).toBeDefined()
   await band.unmount()
   expect(await typeKey($, 'un ', 'c')).toMatchObject({ text: 'un c' })
   const { clock } = ctx
@@ -188,20 +206,46 @@ test('c is caught from new threads to the next prompt sent, then is a letter', a
   expect(world.opened).toBe(1)
 })
 
-test('a failed gh pr view keeps the band; no PR clears it', async ($, on) => {
+test('a failed query keeps the band; outside a GitHub repo clears it', async ($, on) => {
   const { world, clock } = await setUp($, on)
   const band = async () => {
     const ui = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
-    const found = await ui.find({ text: /fils de review non résolus/ })
+    const found = await ui.find({ text: /review non résolue : #7 \(2\)/ })
     await ui.unmount()
     return found
   }
-  world.view = { exitCode: 1, stderr: 'error connecting to api.github.com' }
+  expect(await band()).toBeDefined()
+  world.fail = { exitCode: 1, stderr: 'error connecting to api.github.com' }
   await clock.advance(60_000)
   expect(await band()).toBeDefined()
-  world.view = { exitCode: 1, stderr: 'no pull requests found for branch "main"' }
+  world.fail = { exitCode: 1, stderr: 'failed to run git: fatal : pas un dépôt git' }
   await clock.advance(60_000)
   expect(await band()).toBeUndefined()
+})
+
+test('from main: every PR of yours on the band, t to switch, f says which branch to go to', async ($, on) => {
+  const { world, clock, pane } = await setUp($, on)
+  world.head = 'main'
+  world.more = [prJson(8, 'feat/w', [node('w', false, 'nomme mieux')])]
+  await clock.advance(60_000)
+  const band = await $.ui.mount({ plugin: 'pr-comments', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+  expect(await band.find({ text: /review non résolue : #7 \(2\) · #8 \(1\)/ })).toBeDefined()
+  await band.unmount()
+  const ui = await pane()
+  expect(await ui.find({ text: /PR #7 PR 7 · feat\/x/ })).toBeDefined()
+  await ui.press({ key: 'pr' })
+  expect(await ui.find({ text: /PR #8 PR 8 · feat\/w/ })).toBeDefined()
+  expect(await ui.find({ text: /nomme mieux/ })).toBeDefined()
+  await ui.press({ key: 'fix' })
+  expect(world.filled[0]).toMatch(/^Un fil de review de la PR #8/)
+  expect(world.filled[0]).toContain('passe dessus avant de corriger (`gh pr checkout 8`')
+  await ui.unmount()
+  // /pr-review 7 goes back to PR 7; a PR not listed is said so.
+  expect(await $.command.run({ command: 'pr-review', args: '7' } as never)).toMatchObject({ text: 'Review ouverte.' })
+  expect(await $.command.run({ command: 'pr-review', args: '#42' } as never)).toMatchObject({ text: expect.stringContaining('PR #42 : aucun fil') })
+  const ui2 = await pane()
+  expect(await ui2.find({ text: /PR #7 PR 7/ })).toBeDefined()
+  await ui2.unmount()
 })
 
 test("a write during a poll still reloads after it, so a resolved thread leaves", async ($, on) => {
