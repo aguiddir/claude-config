@@ -13,10 +13,13 @@ const pr = atom({ plugin: 'ci-watch', key: 'pr' } as const, null)
 // Bumped every second while a build runs, so the band's clock moves between
 // polls without asking Jenkins.
 const second = atom({ plugin: 'ci-watch', key: 'second' } as const, 0)
+// When /ci was last typed: it shows the build it finds, however old.
+const askedAt = atom({ plugin: 'ci-watch', key: 'askedAt' } as const, 0)
 const attachment = atom({ plugin: 'ci-watch', key: 'attachment' } as const, null)
 const armed = atom({ plugin: 'ci-watch', key: 'armed' } as const, false)
 const POLL_MS = 10_000
-// A finished build stays on the band this long, then the band hides.
+// A finished build stays on the band this long after it ends or after /ci,
+// whichever is later, then the band hides.
 const SHOW_DONE_MS = 15 * 60_000
 // Sonar processes an analysis a little after the build: the gate is read
 // again on every poll this long after the end, then kept.
@@ -140,10 +143,13 @@ const poll = async ($: EngineInterface) => {
   if (isFixable(now) && !(isSame && isFixable(before)) && (await isTarget())) await update($, armed, () => true)
 }
 
+const isOnBand = async ($: EngineInterface, b: Build) =>
+  b.isBuilding || Date.now() - Math.max(b.endedAt, await read($, askedAt)) <= SHOW_DONE_MS
+
 // The band's build, when it is on the band and broken.
 const shown = async ($: EngineInterface) => {
   const b = await read($, build)
-  return b && isFixable(b) && Date.now() - b.endedAt <= SHOW_DONE_MS ? b : null
+  return b && isFixable(b) && (await isOnBand($, b)) ? b : null
 }
 
 // The failure as a prompt for the box, its error lines only; the log's end
@@ -201,6 +207,7 @@ export const register: Register = on => {
     await update($, dir, () => path)
     await update($, pr, () => number)
     await update($, build, () => null)
+    await update($, askedAt, () => Date.now())
     // A poll still running read the old target and drops what it found: wait
     // for it, then poll the new one, so the reply says what was found.
     await polling
@@ -234,7 +241,7 @@ export const register: Register = on => {
     const below = await next(e)
     const b: Build | null = await read($, build)
     await read($, second)
-    if (e.props.hasSurvey || !b || (!b.isBuilding && Date.now() - b.endedAt > SHOW_DONE_MS)) return below
+    if (e.props.hasSurvey || !b || !(await isOnBand($, b))) return below
     const { Box, Text, Link, Button } = $.ui.resolve(e)
     const failed = b.stages.find(s => s.status === 'FAILED' || s.status === 'UNSTABLE')
     const current = b.stages.find(s => s.status === 'IN_PROGRESS' || s.status === 'PAUSED_PENDING_INPUT')
