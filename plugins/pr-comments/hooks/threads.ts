@@ -7,11 +7,12 @@ import type { Pr, Thread } from '../types'
 // changed (DETAIL): the threads with their comments cost about 30 times
 // the list. `{owner}` and `{repo}` are filled in by `gh api` in -F fields only.
 export const LIST = `query($mine: String!, $requested: String!, $reviewed: String!, $owner: String!, $repo: String!, $branch: String!) {
+  viewer { login }
   mine: search(query: $mine, type: ISSUE, first: 20) { nodes { ...pr } }
   requested: search(query: $requested, type: ISSUE, first: 20) { nodes { ...pr } }
   reviewed: search(query: $reviewed, type: ISSUE, first: 20) { nodes { ...pr } }
   repository(owner: $owner, name: $repo) { pullRequests(headRefName: $branch, states: OPEN, first: 1) { nodes { ...pr } } } }
-fragment pr on PullRequest { number title url headRefName updatedAt }`
+fragment pr on PullRequest { number title url headRefName updatedAt author { login } }`
 export const MINE = 'repo:{owner}/{repo} is:pr is:open author:@me'
 export const REQUESTED = 'repo:{owner}/{repo} is:pr is:open -author:@me review-requested:@me'
 export const REVIEWED = 'repo:{owner}/{repo} is:pr is:open -author:@me reviewed-by:@me'
@@ -26,9 +27,10 @@ export const REPLY = `mutation($id: ID!, $body: String!) {
 
 export const RESOLVE = `mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id } } }`
 
-type EntryJson = { number?: number; title: string; url: string; headRefName: string; updatedAt: string }
+type EntryJson = { number?: number; title: string; url: string; headRefName: string; updatedAt: string; author: { login: string } | null }
 type ListJson = {
   data?: {
+    viewer?: { login: string }
     mine?: { nodes: EntryJson[] }
     requested?: { nodes: EntryJson[] }
     reviewed?: { nodes: EntryJson[] }
@@ -47,7 +49,17 @@ export const toEntries = (json: ListJson): Entry[] => {
   const take = (nodes: EntryJson[], isReview: boolean) =>
     nodes
       .filter((p): p is EntryJson & { number: number } => typeof p.number === 'number' && !seen.has(p.number) && !!seen.add(p.number))
-      .map(p => ({ number: p.number, isReview, title: p.title, url: p.url, branch: p.headRefName, updatedAt: p.updatedAt }))
+      .map(p => ({
+        number: p.number,
+        isReview,
+        // A deleted account has no author, and is nobody's.
+        isMine: !!p.author && p.author.login === d?.viewer?.login,
+        author: p.author?.login ?? 'ghost',
+        title: p.title,
+        url: p.url,
+        branch: p.headRefName,
+        updatedAt: p.updatedAt,
+      }))
   return [
     ...take([...(d?.repository?.pullRequests.nodes ?? []), ...(d?.mine?.nodes ?? [])], false),
     ...take([...(d?.requested?.nodes ?? []), ...(d?.reviewed?.nodes ?? [])], true),
@@ -129,6 +141,11 @@ export const reviewPrompt = (pr: Pr, threads: readonly Thread[], branch: string)
       ].join('\n'),
     ),
     threads.length > 1 ? 'Traite chacun : corrige le code, ou dis-moi pourquoi tu ne le ferais pas.' : 'Corrige le code, ou dis-moi pourquoi tu ne le ferais pas.',
+    // Commits and pushes on the user's own PRs only: another's branch is its
+    // author's to push.
+    pr.isMine
+      ? 'Commite chaque correction en `git commit --fixup=<sha>` du commit qu\'elle corrige, puis pousse la branche.'
+      : `C'est la PR de @${pr.author} : corrige en local, sans commiter ni pousser, et dis-moi ce que tu as changé.`,
   ].join('\n\n')
 
 // A thread's file by its name alone, with its folder when another thread of

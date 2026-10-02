@@ -56,7 +56,7 @@ A band above the prompt lists the open PRs of the repo that have unresolved revi
 | `t` | next PR, when several have threads |
 | `x` | mark the thread, for `f` |
 | `a` | mark every thread, or none once they all are |
-| `f` | puts the marked threads (or the one shown) in the prompt box, to read, edit and send to Claude; once sent they are badged `→ Claude`. When the PR is not on the current branch, the prompt tells Claude to check it out first (or use a worktree if changes are in progress) |
+| `f` | puts the marked threads (or the one shown) in the prompt box, to read, edit and send to Claude; once sent they are badged `→ Claude`. When the PR is not on the current branch, the prompt tells Claude to check it out first (or use a worktree if changes are in progress). On your own PR it asks for one `--fixup` commit per commit corrected, then a push; on anyone else's, a local fix with no commit and no push |
 | `r` | writes a reply, posted to GitHub on Enter; Esc gives it up and keeps the pane, as the field takes every letter meanwhile |
 | `v` | resolves the thread on GitHub |
 | `o` | opens the thread in the browser |

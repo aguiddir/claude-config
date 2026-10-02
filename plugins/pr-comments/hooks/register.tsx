@@ -379,6 +379,7 @@ export const register: Register = on => {
           {/* With several PRs, the group line below says which group. */}
           {all.length > 1 ? '' : p.isReview ? 'en relecture · ' : 'à traiter · '}
           {p.branch === head ? 'branche courante' : `branche ${p.branch}`}
+          {p.isMine ? '' : ` · PR de @${p.author}`}
         </Text>
         {all.length > 1 && <Text wrap="truncate-end">{prGroups(Text, all, p.number)}</Text>}
         <Box marginTop={1} flexDirection="column">
