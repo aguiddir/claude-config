@@ -13,7 +13,7 @@
     {
       "name": "replay",
       "source": "./plugins/replay",
-      "description": "/replay steps through the last turn's file edits as diffs in a pane"
+      "description": "/replay, or r after a turn, steps through its file edits as diffs above the prompt"
     }
   ]
 }
