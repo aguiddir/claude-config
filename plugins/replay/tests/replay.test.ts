@@ -51,7 +51,7 @@ test('after a turn with edits, the band offers the replay and r opens it', async
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: 'done' }))
   on('ui.open', () => (opened++, { value: { isPlaced: true } }))
-  on('prompt.submit', (_$, e) => ({ text: e.text }))
+  on('prompt.edit', (_$, e) => ({ text: e.text + e.inputText, cursor: e.cursor + e.inputText.length }))
   await $.turn.start({ text: 'go', turnId: 't1' })
   await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b' })
   await $.turn.complete({ reason: 'answer', answer: 'done', durationMs: 1, isAborted: false, turnId: 't1' })
@@ -61,7 +61,13 @@ test('after a turn with edits, the band offers the replay and r opens it', async
     expect(await band.find({ text: /1 édition/ })).toBeDefined()
     await band.unmount()
   }
-  expect(await $.prompt.submit({ text: 'r' } as never)).toEqual({ drop: 'Replay ouvert.' })
+  // The kit's typings leave prompt.edit off the test's $, though it runs it.
+  const prompt = $.prompt as unknown as { edit: (e: unknown) => Promise<{ text: string }> }
+  const typeKey = (text: string, key: string) =>
+    prompt.edit({ origin: { kind: 'composer' }, text, cursor: text.length, start: text.length, end: text.length, inputText: key })
+  expect(await typeKey('', 'r')).toMatchObject({ text: '' })
   expect(opened).toBe(1)
-  expect(await $.prompt.submit({ text: 'r' } as never)).toEqual({ text: 'r' })
+  // The band is down once the replay opened: r types again.
+  expect(await typeKey('', 'r')).toMatchObject({ text: 'r' })
+  expect(await typeKey('fo', 'r')).toMatchObject({ text: 'for' })
 })

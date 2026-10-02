@@ -64,11 +64,15 @@ export const register: Register = on => {
     return r
   })
 
-  // A letter typed at the prompt never presses a Button, so `r` + Enter is
-  // caught here while the band shows; any other prompt takes the band down.
+  // While the band shows, `r` typed into an empty prompt opens the replay
+  // and never reaches the box; any prompt sent takes the band down.
+  on('prompt.edit', async ($, e, next) => {
+    const isR = e.text === '' && e.inputText.toLowerCase() === 'r'
+    if (isR && (await read($, hint)) && (await openReplay($))) return { text: e.text, cursor: e.cursor }
+    return next(e)
+  })
+
   on('prompt.submit', async ($, e, next) => {
-    if (!(await read($, hint))) return next(e)
-    if (e.text.trim().toLowerCase() === 'r' && (await openReplay($))) return { drop: 'Replay ouvert.' }
     await update($, hint, () => false)
     return next(e)
   })
@@ -81,7 +85,7 @@ export const register: Register = on => {
       <Box>
         <Text color="magenta">↺ {count} édition(s) au dernier tour · </Text>
         <Button key="replay" label="rejouer" hotkey="r" plain onPress={() => void openReplay($)} />
-        <Text dimColor> (r puis Entrée, ou /replay)</Text>
+        <Text dimColor> (ou /replay)</Text>
       </Box>
     )
   })
