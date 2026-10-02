@@ -1,11 +1,13 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { Thread } from '../types'
-import { QUERY, REPLY, RESOLVE, hunkTail, reviewHeader, reviewPrompt, toPr, where } from './threads'
+import type { Pr, Thread } from '../types'
+import { MINE, QUERY, REPLY, RESOLVE, hunkTail, reviewHeader, reviewPrompt, toPrs, where } from './threads'
 
 const PANE = 'pr-review'
-const pr = atom({ plugin: 'pr-comments', key: 'pr' } as const, null)
+const prs = atom({ plugin: 'pr-comments', key: 'prs' } as const, [])
+const branch = atom({ plugin: 'pr-comments', key: 'branch' } as const, '')
+const shownPr = atom({ plugin: 'pr-comments', key: 'shownPr' } as const, null)
 const sent = atom({ plugin: 'pr-comments', key: 'sent' } as const, [])
 const draft = atom({ plugin: 'pr-comments', key: 'draft' } as const, null)
 const at = atom({ plugin: 'pr-comments', key: 'at' } as const, 0)
@@ -13,7 +15,7 @@ const marked = atom({ plugin: 'pr-comments', key: 'marked' } as const, [])
 const reply = atom({ plugin: 'pr-comments', key: 'reply' } as const, null)
 const busy = atom({ plugin: 'pr-comments', key: 'busy' } as const, null)
 const armed = atom({ plugin: 'pr-comments', key: 'armed' } as const, false)
-// GitHub allows 5000 GraphQL points an hour; one poll costs one.
+// GitHub allows 5000 GraphQL points an hour; one poll costs a few.
 const POLL_MS = 60_000
 
 const exec = async ($: EngineInterface, argv: string[]) =>
@@ -24,26 +26,24 @@ const run = async ($: EngineInterface, argv: string[]) => {
   return r && r.exitCode === 0 ? r.stdout.trim() : undefined
 }
 
-// What gh says when there is no PR to follow, as opposed to a failed call
-// (network, auth), after which the band is kept. git's own words are
-// translated, gh's prefix is not.
-const NO_PR = /no pull requests found|failed to run git/
+// What gh says outside a GitHub repo, as opposed to a failed call (network,
+// auth), after which the band is kept. git's own words are translated,
+// gh's are not.
+const NO_REPO = /failed to run git|none of the git remotes/
 
 const poll = async ($: EngineInterface) => {
-  const view = await exec($, ['gh', 'pr', 'view', '--json', 'number', '-q', '.number'])
-  if (!view) return
-  if (view.exitCode !== 0) return NO_PR.test(view.stderr) ? update($, pr, () => null) : undefined
-  const number = Number(view.stdout.trim())
-  const out = await run($, ['gh', 'api', 'graphql', '-F', 'owner={owner}', '-F', 'repo={repo}', '-F', `n=${number}`, '-f', `query=${QUERY}`])
-  // A network blip keeps what the band shows.
-  if (out === undefined) return
+  const head = (await run($, ['git', 'rev-parse', '--abbrev-ref', 'HEAD'])) ?? ''
+  const r = await exec($, ['gh', 'api', 'graphql', '-F', `mine=${MINE}`, '-F', 'owner={owner}', '-F', 'repo={repo}', '-f', `branch=${head}`, '-f', `query=${QUERY}`])
+  if (!r) return
+  if (r.exitCode !== 0) return NO_REPO.test(r.stderr) ? update($, prs, () => []) : undefined
   try {
-    const found = toPr(number, JSON.parse(out))
-    const known = new Set((await read($, pr))?.threads.map(t => t.id) ?? [])
-    await update($, pr, () => found)
+    const found = toPrs(JSON.parse(r.stdout))
+    const known = new Set((await read($, prs)).flatMap(p => p.threads.map(t => t.id)))
+    await update($, branch, () => head)
+    await update($, prs, () => found)
     // A thread not seen before arms `c` until the next prompt is sent, so a
     // message starting with c is only caught right after threads come in.
-    if (found?.threads.some(t => !known.has(t.id))) await update($, armed, () => true)
+    if (found.some(p => p.threads.some(t => !known.has(t.id)))) await update($, armed, () => true)
   } catch {
     // Not JSON: kept as it was, like a blip.
   }
@@ -67,7 +67,15 @@ const tick = async ($: EngineInterface) => {
   isPolling = false
 }
 
-const threads = async ($: EngineInterface) => (await read($, pr))?.threads ?? []
+// The PR the pane shows: the one picked, else the first (the current
+// branch's when it has threads), as PRs come and go.
+const pane = async ($: EngineInterface): Promise<Pr | undefined> => {
+  const list = await read($, prs)
+  const picked = await read($, shownPr)
+  return list.find(p => p.number === picked) ?? list[0]
+}
+
+const threads = async ($: EngineInterface) => (await pane($))?.threads ?? []
 
 // The thread the pane shows, its index kept in range as threads resolve.
 const current = async ($: EngineInterface): Promise<Thread | undefined> => {
@@ -76,10 +84,24 @@ const current = async ($: EngineInterface): Promise<Thread | undefined> => {
 }
 
 const openPane = async ($: EngineInterface) => {
-  const p = await read($, pr)
-  if (!p || p.threads.length === 0) return false
-  await $.ui.open({ id: PANE, title: `Review PR #${p.number}`, focus: true, closeOnEscape: true, rows: 32 })
+  if (!(await pane($))) return false
+  await $.ui.open({ id: PANE, title: 'Review', focus: true, closeOnEscape: true, rows: 32 })
   return true
+}
+
+const showPr = async ($: EngineInterface, number: number) => {
+  await update($, shownPr, () => number)
+  await update($, at, () => 0)
+  await update($, marked, () => [])
+  await update($, reply, () => null)
+}
+
+// The next PR in the list, round to the first.
+const nextPr = async ($: EngineInterface) => {
+  const list = await read($, prs)
+  const p = await pane($)
+  // By number: each read of the state is a copy of its own.
+  if (list.length > 1 && p) await showPr($, list[(list.findIndex(x => x.number === p.number) + 1) % list.length]!.number)
 }
 
 const go = async ($: EngineInterface, d: number) => {
@@ -102,7 +124,7 @@ const toggleAll = async ($: EngineInterface) => {
 // The marked threads, or the one shown, as a prompt in the box to read and
 // send; they are badged sent only once that prompt is.
 const fix = async ($: EngineInterface) => {
-  const p = await read($, pr)
+  const p = await pane($)
   const ids = await read($, marked)
   const shown = await current($)
   const chosen = ids.length ? (p?.threads ?? []).filter(t => ids.includes(t.id)) : shown ? [shown] : []
@@ -111,7 +133,7 @@ const fix = async ($: EngineInterface) => {
   await update($, marked, () => [])
   await update($, reply, () => null)
   await $.ui.close({ id: PANE })
-  await $.prompt.fill({ text: reviewPrompt(p, chosen) })
+  await $.prompt.fill({ text: reviewPrompt(p, chosen, await read($, branch)) })
 }
 
 const startReply = async ($: EngineInterface) => {
@@ -158,6 +180,8 @@ const openWeb = async ($: EngineInterface) => {
   if (t) await run($, ['xdg-open', t.url])
 }
 
+const count = (p: Pr) => `#${p.number} (${p.threads.length})`
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
@@ -167,21 +191,27 @@ export const register: Register = on => {
     // `/review` is the built-in /code-review's; a refused name still leaves
     // the band and `c`.
     await $.command
-      .register({ name: 'pr-review', description: "Open the current branch's PR review threads in a pane" })
+      .register({ name: 'pr-review', description: 'Open the review threads of your PRs (or PR <number>) in a pane', argumentHint: '[number]' })
       .catch(() => $.ui.toast('pr-comments : /pr-review indisponible, utilise c'))
     return r
   })
 
-  on('command.run', { command: 'pr-review' }, async $ => ({
-    text: (await openPane($)) ? 'Review ouverte.' : 'Aucun fil de review non résolu sur la PR de cette branche.',
-  }))
+  on('command.run', { command: 'pr-review' }, async ($, e) => {
+    const number = Number(e.args.trim().replace(/^#/, ''))
+    if (number) {
+      if (!(await read($, prs)).some(p => p.number === number))
+        return { text: `PR #${number} : aucun fil non résolu, ou ni à toi ni sur la branche courante.` }
+      await showPr($, number)
+    }
+    return { text: (await openPane($)) ? 'Review ouverte.' : 'Aucun fil de review non résolu sur tes PR ni sur la branche courante.' }
+  })
 
   // A letter typed at the prompt never presses a band Button: `c`, in an
   // empty prompt while armed, opens the pane; otherwise /pr-review.
   // Opened once the keystroke is done: the pane only gets the keyboard over
   // an empty prompt, and during the edit the prompt is still taking it.
   on('prompt.edit', async ($, e, next) => {
-    if (e.text !== '' || e.inputText.toLowerCase() !== 'c' || !(await read($, armed)) || (await threads($)).length === 0) return next(e)
+    if (e.text !== '' || e.inputText.toLowerCase() !== 'c' || !(await read($, armed)) || !(await pane($))) return next(e)
     $.clock.after(0, () => void openPane($))
     return { text: '', cursor: 0 }
   })
@@ -209,18 +239,17 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const below = await next(e)
-    const p = await read($, pr)
-    if (e.props.hasSurvey || !p || p.threads.length === 0) return below
+    const list = await read($, prs)
+    if (e.props.hasSurvey || list.length === 0) return below
     const { Box, Text, Button } = $.ui.resolve(e)
-    const n = p.threads.length
     return (
       <Box flexDirection="column">
         {below}
         <Box>
-          <Text color="yellow">
-            💬 {n} fil{n > 1 ? 's' : ''} de review non résolu{n > 1 ? 's' : ''} · PR #{p.number} ·{' '}
+          <Text color="yellow" wrap="truncate-end">
+            💬 review non résolue : {list.map(count).join(' · ')} ·{' '}
           </Text>
-          <Button key="open" label="ouvrir la review" hotkey="c" plain onPress={() => void openPane($)} />
+          <Button key="open" label="ouvrir" hotkey="c" plain onPress={() => void openPane($)} />
           <Text dimColor>{(await read($, armed)) ? ' (c, prompt vide)' : ' (/pr-review)'}</Text>
         </Box>
       </Box>
@@ -231,11 +260,13 @@ export const register: Register = on => {
     const { Box, Text, Button, Code, Markdown, Link } = $.ui.resolve(e)
     // Mobile draws no text field: no reply there, the rest works.
     const Input = e.surface === 'mobile' ? undefined : $.ui.resolve(e).Input
-    const p = await read($, pr)
+    const all = await read($, prs)
+    const p = await pane($)
     const list = p?.threads ?? []
     if (!p || list.length === 0) return <Text dimColor>Plus aucun fil non résolu. Esc pour fermer.</Text>
     const i = Math.min(await read($, at), list.length - 1)
     const t = list[i]!
+    const head = await read($, branch)
     const sentIds = await read($, sent)
     const marks = await read($, marked)
     const replyText = await read($, reply)
@@ -246,6 +277,15 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
+        <Text wrap="truncate-end">
+          <Text bold>PR #{p.number}</Text> {p.title}
+          <Text dimColor> · {p.branch === head ? 'branche courante' : p.branch}</Text>
+        </Text>
+        {all.length > 1 && (
+          <Text wrap="truncate-end" dimColor>
+            {all.map(x => (x.number === p.number ? `[${count(x)}]` : count(x))).join('  ')}
+          </Text>
+        )}
         {list.map((x, n) => (
           <Text wrap="truncate-end" color={n === i ? 'cyan' : undefined} dimColor={n !== i && x.isAnswered}>
             {n === i ? '▸' : ' '} {marks.includes(x.id) ? '◉' : ' '} {n + 1}. {where(x)}
@@ -281,6 +321,8 @@ export const register: Register = on => {
           <Text> </Text>
           <Button key="next" label="suiv." hotkey="n" plain onPress={() => void go($, 1)} />
           <Text> </Text>
+          {all.length > 1 && <Button key="pr" label="PR suiv." hotkey="t" plain onPress={() => void nextPr($)} />}
+          {all.length > 1 && <Text> </Text>}
           <Button key="mark" label={marks.includes(t.id) ? 'démarquer' : 'marquer'} hotkey="x" plain onPress={() => void toggleMark($)} />
           <Text> </Text>
           <Button key="all" label={marks.length === list.length ? 'tout démarquer' : 'tout marquer'} hotkey="a" plain onPress={() => void toggleAll($)} />
