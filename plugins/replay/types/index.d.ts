@@ -3,6 +3,6 @@ export type Step = { tool: string; path: string; patch: string; omitted: number 
 
 declare module 'claude-code' {
   interface PluginState {
-    replay: { pending: Step[]; steps: Step[]; at: number }
+    replay: { pending: Step[]; steps: Step[]; at: number; hint: boolean }
   }
 }

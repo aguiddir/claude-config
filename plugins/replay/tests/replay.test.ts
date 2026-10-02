@@ -39,3 +39,29 @@ test("a turn's edits are recorded and drawn in the pane", async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('after a turn with edits, the band offers the replay and r opens it', async ($, on) => {
+  let opened = 0
+  on('tool.call', { tool: 'Edit' }, () => ({
+    result: {
+      filePath: '/repo/a.ts', oldString: 'a', newString: 'b', originalFile: 'a', structuredPatch: [hunk],
+      userModified: false, replaceAll: false,
+    },
+  }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: 'done' }))
+  on('ui.open', () => (opened++, { value: { isPlaced: true } }))
+  on('prompt.submit', (_$, e) => ({ text: e.text }))
+  await $.turn.start({ text: 'go', turnId: 't1' })
+  await $.tool.call({ tool: 'Edit', file_path: '/repo/a.ts', old_string: 'a', new_string: 'b' })
+  await $.turn.complete({ reason: 'answer', answer: 'done', durationMs: 1, isAborted: false, turnId: 't1' })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const band = await $.ui.mount({ plugin: 'replay', surface, component: 'AbovePrompt', props: { hasSurvey: false } as never })
+    expect(await band.find({ text: /1 édition/ })).toBeDefined()
+    await band.unmount()
+  }
+  expect(await $.prompt.submit({ text: 'r' } as never)).toEqual({ drop: 'Replay ouvert.' })
+  expect(opened).toBe(1)
+  expect(await $.prompt.submit({ text: 'r' } as never)).toEqual({ text: 'r' })
+})

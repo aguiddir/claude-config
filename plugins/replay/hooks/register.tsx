@@ -9,10 +9,13 @@ const PANE = 'replay'
 const pending = atom({ plugin: 'replay', key: 'pending' } as const, [])
 const steps = atom({ plugin: 'replay', key: 'steps' } as const, [])
 const at = atom({ plugin: 'replay', key: 'at' } as const, 0)
+// The band offering the replay, from a turn with edits to the next prompt.
+const hint = atom({ plugin: 'replay', key: 'hint' } as const, false)
 
 const openReplay = async ($: EngineInterface) => {
   if ((await read($, steps)).length === 0) return false
   await update($, at, () => 0)
+  await update($, hint, () => false)
   await $.ui.open({ id: PANE, title: 'Replay', focus: true, closeOnEscape: true })
   return true
 }
@@ -54,8 +57,33 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
     const recorded = await read($, pending)
-    if (!e.agentId && recorded.length) await update($, steps, () => recorded)
+    if (!e.agentId && recorded.length) {
+      await update($, steps, () => recorded)
+      await update($, hint, () => true)
+    }
     return r
+  })
+
+  // A letter typed at the prompt never presses a Button, so `r` + Enter is
+  // caught here while the band shows; any other prompt takes the band down.
+  on('prompt.submit', async ($, e, next) => {
+    if (!(await read($, hint))) return next(e)
+    if (e.text.trim().toLowerCase() === 'r' && (await openReplay($))) return { drop: 'Replay ouvert.' }
+    await update($, hint, () => false)
+    return next(e)
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const count = (await read($, steps)).length
+    if (e.props.hasSurvey || !(await read($, hint)) || count === 0) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    return (
+      <Box>
+        <Text color="magenta">↺ {count} édition(s) au dernier tour · </Text>
+        <Button key="replay" label="rejouer" hotkey="r" plain onPress={() => void openReplay($)} />
+        <Text dimColor> (r puis Entrée, ou /replay)</Text>
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
