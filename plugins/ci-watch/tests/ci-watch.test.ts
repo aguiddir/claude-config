@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { bar, errorLines, frameColor, jobUrl, live, minutes, repoOf, short, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
+import { bar, errorLines, frameColor, jobUrl, live, minutes, prOf, repoOf, short, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
 
 test('repo, job URL and progress', async () => {
   expect(repoOf('git@github.com:softwarevidal/vidal-mcp.git')).toBe('vidal-mcp')
@@ -66,6 +66,9 @@ const setUp = ($: Engine, on: On) => {
     jenkinsDown: false,
     gh: 0,
     cwds: [] as string[],
+    urls: [] as string[],
+    // Set, Jenkins does not answer until it resolves.
+    hold: undefined as Promise<void> | undefined,
     gateAsks: [] as unknown[],
     toasts: [] as string[],
     prompts: [] as string[],
@@ -84,6 +87,8 @@ const setUp = ($: Engine, on: On) => {
     return proc(e.argv[1] === 'remote' ? 'git@github.com:softwarevidal/vidal-mcp.git' : e.argv[1] === 'rev-parse' ? 'main' : '')
   })
   on('http.fetch', (_$, e) => {
+    world.urls.push(e.url)
+    if (world.hold) return world.hold.then(() => http(world.run))
     if (world.jenkinsDown) return http({}, 503)
     if (!world.branchJob && e.url.includes('/job/main/')) return http({}, 404)
     if (e.url.endsWith('consoleText')) return world.consoleReads++, { value: { status: 200, ok: true, headers: {}, text: 'checkout\n'.repeat(300) + 'AssertionError: 1 != 2\n' } }
@@ -184,9 +189,53 @@ test('without a branch job, the PR job is followed and its gate read by PR', asy
 test('/ci points the band at another repo', async ($, on) => {
   const { world, clock } = setUp($, on)
   const reply = await $.command.run({ command: 'ci', args: '~/PycharmProjects/data-bridge' } as never)
-  expect(reply).toMatchObject({ text: 'CI suivie : /home/me/PycharmProjects/data-bridge' })
+  expect(reply).toMatchObject({ text: 'CI suivie : vidal-mcp · main #426 · en cours · https://jenkins.vidal.net/job/team.software/job/github/job/vidal-mcp/job/main/426/' })
   await clock.settle()
   expect(world.cwds).toContain('/home/me/PycharmProjects/data-bridge')
+})
+
+test('/ci with a PR number or URL follows that PR job, whatever the branch', async ($, on) => {
+  expect([prOf('231'), prOf('#231'), prOf('https://github.com/softwarevidal/data-bridge/pull/231'), prOf('~/x'), prOf('')]).toEqual(['#231', '#231', 'data-bridge#231', undefined, undefined])
+  const { world } = setUp($, on)
+  const reply = await $.command.run({ command: 'ci', args: 'https://github.com/softwarevidal/data-bridge/pull/231' } as never)
+  expect(reply).toMatchObject({ text: 'CI suivie : data-bridge · PR-231 #426 · en cours · https://jenkins.vidal.net/job/team.software/job/github/job/data-bridge/job/PR-231/426/' })
+  expect(world.gh).toBe(0)
+  expect(world.urls.some(u => u.includes('/job/main/'))).toBe(false)
+  // A bare number takes the repo from the session's directory.
+  expect(await $.command.run({ command: 'ci', args: '#233' } as never)).toMatchObject({ text: expect.stringContaining('vidal-mcp · PR-233 #426') })
+})
+
+test('/ci on another repo reads its Sonar key from the repo name, not the session folder', async ($, on) => {
+  const { world, end } = setUp($, on)
+  on('fs.read', () => ({ value: 'sonar.projectKey=vidal_mcp_key\n' }))
+  end('SUCCESS', 40_000)
+  await $.command.run({ command: 'ci', args: 'https://github.com/softwarevidal/data-bridge/pull/231' } as never)
+  expect(world.gateAsks[0]).toMatchObject({ projectKey: 'data-bridge', pullRequest: '231' })
+  // The session's own repo still takes its key from its file.
+  await $.command.run({ command: 'ci', args: '#233' } as never)
+  expect(world.gateAsks[1]).toMatchObject({ projectKey: 'vidal_mcp_key', pullRequest: '233' })
+})
+
+test('/ci waits for a poll in flight instead of running beside it', async ($, on) => {
+  const { world, clock, start } = setUp($, on)
+  await start()
+  let release = () => {}
+  world.hold = new Promise(r => (release = r))
+  await clock.advance(10_000)
+  const before = world.urls.length
+  const reply = $.command.run({ command: 'ci', args: '' } as never)
+  await clock.advance(1)
+  // The timer's poll is stuck on Jenkins: /ci has not asked Jenkins yet.
+  expect(world.urls.length).toBe(before)
+  world.hold = undefined
+  release()
+  expect(await reply).toMatchObject({ text: expect.stringContaining('vidal-mcp · main #426') })
+})
+
+test('/ci says when it finds no build', async ($, on) => {
+  const { world } = setUp($, on)
+  world.jenkinsDown = true
+  expect(await $.command.run({ command: 'ci', args: '#999' } as never)).toMatchObject({ text: 'CI suivie : #999 · aucun build Jenkins trouvé' })
 })
 
 test('f puts a broken build in the prompt box, with the end of its log and the red gate', async ($, on) => {

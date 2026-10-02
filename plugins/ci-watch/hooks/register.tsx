@@ -2,12 +2,14 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Build } from '../types'
-import { bar, errorLines, fixHeader, fixPrompt, frameColor, isFixable, jobUrl, live, minutes, repoOf, short, sonarKeyOf, sonarRan, stageMark, logContext, tail, toBuild, toGate } from './jenkins'
+import { bar, errorLines, fixHeader, fixPrompt, frameColor, isFixable, jobUrl, live, minutes, prOf, repoOf, short, sonarKeyOf, sonarRan, stageMark, logContext, tail, toBuild, toGate } from './jenkins'
 import type { GateJson, RunJson, StagesJson } from './jenkins'
 
 const build = atom({ plugin: 'ci-watch', key: 'build' } as const, null)
 // The repo /ci points at; null follows the session's own directory.
 const dir = atom({ plugin: 'ci-watch', key: 'dir' } as const, null)
+// The PR /ci points at, as prOf gives it; null follows the branch.
+const pr = atom({ plugin: 'ci-watch', key: 'pr' } as const, null)
 // Bumped every second while a build runs, so the band's clock moves between
 // polls without asking Jenkins.
 const second = atom({ plugin: 'ci-watch', key: 'second' } as const, 0)
@@ -44,26 +46,28 @@ const getJson = async <T,>($: EngineInterface, url: string): Promise<Fetched<T>>
   }
 }
 
+const tryJob = async ($: EngineInterface, repo: string, job: string) => {
+  const url = jobUrl(repo, job)
+  const got = await getJson<RunJson>($, `${url}/lastBuild/api/json?${RUN_TREE}`)
+  if (typeof got === 'string') return got
+  const sonarRef = job.startsWith('PR-') ? { pullRequest: job.slice(3) } : { branch: job }
+  return { url, runJson: got.data, label: `${repo} · ${job}`, sonarRef }
+}
+
 // The branch's own job, else the PR job Jenkins builds for it instead; `gh`
 // only runs when the branch has no job.
 const findRun = async ($: EngineInterface, cwd: string, repo: string, branch: string) => {
-  const tryJob = async (job: string) => {
-    const url = jobUrl(repo, job)
-    const got = await getJson<RunJson>($, `${url}/lastBuild/api/json?${RUN_TREE}`)
-    if (typeof got === 'string') return got
-    const sonarRef = job.startsWith('PR-') ? { pullRequest: job.slice(3) } : { branch: job }
-    return { url, runJson: got.data, label: `${repo} · ${job}`, sonarRef }
-  }
-  const own = await tryJob(branch)
+  const own = await tryJob($, repo, branch)
   if (own !== 'missing') return own
-  const pr = await run($, cwd, ['gh', 'pr', 'view', '--json', 'number', '-q', '.number'])
-  return pr ? tryJob(`PR-${pr}`) : 'missing'
+  const number = await run($, cwd, ['gh', 'pr', 'view', '--json', 'number', '-q', '.number'])
+  return number ? tryJob($, repo, `PR-${number}`) : 'missing'
 }
 
 // Through the SonarQube MCP server, so no token lives here; null when it is
-// not connected or the project has no analysis for that branch.
-const readGate = async ($: EngineInterface, cwd: string, repo: string, ref: { branch?: string; pullRequest?: string }) => {
-  const properties = await $.fs.read(`${cwd}/sonar-project.properties`).catch(() => '')
+// not connected or the project has no analysis for that branch. The key is
+// read from `cwd` only when it holds the followed repo, else it is the repo.
+const readGate = async ($: EngineInterface, cwd: string | undefined, repo: string, ref: { branch?: string; pullRequest?: string }) => {
+  const properties = cwd ? await $.fs.read(`${cwd}/sonar-project.properties`).catch(() => '') : ''
   const projectKey = sonarKeyOf(typeof properties === 'string' ? properties : '') ?? repo
   const r = await $.tool.call({ tool: SONAR_GATE, projectKey, ...ref }).catch(() => undefined)
   if (!r || ('deny' in r && r.deny !== undefined) || r.isError || typeof r.text !== 'string') return null
@@ -76,14 +80,24 @@ const readGate = async ($: EngineInterface, cwd: string, repo: string, ref: { br
 
 const poll = async ($: EngineInterface) => {
   const target = await read($, dir)
-  // A poll that outlives a /ci to another repo drops what it found.
+  const targetPr = await read($, pr)
+  // A poll that outlives a /ci to another repo or PR drops what it found.
+  const isTarget = async () => (await read($, dir)) === target && (await read($, pr)) === targetPr
   const write = async (value: Build | null) => {
-    if ((await read($, dir)) === target) await update($, build, () => value)
+    if (await isTarget()) await update($, build, () => value)
   }
   const cwd = target ?? (await $.session.cwd())
-  const repo = repoOf(await run($, cwd, ['git', 'remote', 'get-url', 'origin']))
-  const branch = await run($, cwd, ['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
-  const found = repo && branch && branch !== 'HEAD' ? await findRun($, cwd, repo, branch) : 'missing'
+  const [prRepo, prNumber] = targetPr?.split('#') ?? []
+  const ownRepo = repoOf(await run($, cwd, ['git', 'remote', 'get-url', 'origin']))
+  const repo = prRepo || ownRepo
+  const branch = prNumber ? '' : await run($, cwd, ['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
+  const found = !repo
+    ? 'missing'
+    : prNumber
+      ? await tryJob($, repo, `PR-${prNumber}`)
+      : branch && branch !== 'HEAD'
+        ? await findRun($, cwd, repo, branch)
+        : 'missing'
   if (found === 'failed') return
   if (found === 'missing' || !repo) return write(null)
 
@@ -103,7 +117,7 @@ const poll = async ($: EngineInterface) => {
   const isFresh = !now.isBuilding && sinceEnd < GATE_FRESH_MS
   if (!now.isBuilding && sonarRan(now.stages) && sinceEnd >= GATE_SETTLE_MS) {
     // Read while fresh, or once for a build first seen already old; then kept.
-    now.gate = isSame && !isFresh && before.gate !== undefined ? before.gate : await readGate($, cwd, repo, sonarRef)
+    now.gate = isSame && !isFresh && before.gate !== undefined ? before.gate : await readGate($, repo === ownRepo ? cwd : undefined, repo, sonarRef)
   }
 
   if (isSame && before.isBuilding && !now.isBuilding)
@@ -123,7 +137,7 @@ const poll = async ($: EngineInterface) => {
   await write(now)
   // A build turning broken arms `f` until the next prompt is sent, so a
   // message starting with f is only caught right after the band turns red.
-  if (isFixable(now) && !(isSame && isFixable(before)) && (await read($, dir)) === target) await update($, armed, () => true)
+  if (isFixable(now) && !(isSame && isFixable(before)) && (await isTarget())) await update($, armed, () => true)
 }
 
 // The band's build, when it is on the band and broken.
@@ -147,25 +161,26 @@ const fillFix = async ($: EngineInterface) => {
   if (text) await $.prompt.fill({ text })
 }
 
-// One poll at a time, timer and /ci alike; one timer per module, so a second
-// session.start replaces it instead of adding a loop.
-let isPolling = false
+// One poll at a time, timer and /ci alike: a tick during a poll joins it.
+// One timer per module, so a second session.start replaces it instead of
+// adding a loop.
+let polling: Promise<void> | undefined
 let timer: Timer | undefined
 let clockTimer: Timer | undefined
-const tick = async ($: EngineInterface) => {
-  if (isPolling) return
-  isPolling = true
-  await poll($).catch(() => undefined)
-  isPolling = false
-}
+const tick = ($: EngineInterface) =>
+  (polling ??= poll($)
+    .catch(() => undefined)
+    .finally(() => {
+      polling = undefined
+    }))
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     await $.command.register({
       name: 'ci',
-      description: "Follow the Jenkins build of the repo at <path> (no path: the session's directory)",
-      argumentHint: '[path]',
+      description: "Follow the Jenkins build of a PR (number or URL) or of the repo at <path> (nothing: the session's directory)",
+      argumentHint: '[pr | path]',
     })
     void tick($)
     timer?.cancel()
@@ -180,11 +195,21 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'ci' }, async ($, e) => {
-    const path = e.args.trim().replace(/^~(?=\/|$)/, (await $.env.get('HOME')) ?? '~') || null
+    const arg = e.args.trim()
+    const number = prOf(arg) ?? null
+    const path = number ? null : arg.replace(/^~(?=\/|$)/, (await $.env.get('HOME')) ?? '~') || null
     await update($, dir, () => path)
+    await update($, pr, () => number)
     await update($, build, () => null)
-    void tick($)
-    return { text: path ? `CI suivie : ${path}` : 'CI suivie : le répertoire de la session' }
+    // A poll still running read the old target and drops what it found: wait
+    // for it, then poll the new one, so the reply says what was found.
+    await polling
+    await tick($)
+    const b = await read($, build)
+    const what = number ?? path ?? 'le répertoire de la session'
+    if (!b) return { text: `CI suivie : ${what} · aucun build Jenkins trouvé` }
+    const state = b.isBuilding ? 'en cours' : (b.result ?? 'terminé')
+    return { text: `CI suivie : ${b.label} #${b.number} · ${state} · ${b.url}` }
   })
 
   // A letter typed at the prompt never presses a band Button: `f`, in an

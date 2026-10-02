@@ -10,6 +10,14 @@ const ORG = 'softwarevidal'
 export const repoOf = (remote: string): string | undefined =>
   remote.trim().match(new RegExp(`github\\.com[:/]${ORG}/([^/\\s]+?)(?:\\.git)?$`))?.[1]
 
+// `/ci 231`, `/ci #231` or a PR's URL → `#231` or `data-bridge#231`; any
+// other argument is a path.
+export const prOf = (arg: string): string | undefined => {
+  const url = arg.match(new RegExp(`github\\.com/${ORG}/([^/\\s]+)/pull/(\\d+)`))
+  if (url) return `${url[1]}#${url[2]}`
+  return arg.match(/^#?\d+$/) ? `#${arg.replace('#', '')}` : undefined
+}
+
 // A multibranch job is named after the branch with `/` escaped as %2F, and
 // that name is escaped again in the URL: feat/x → job/feat%252Fx.
 export const jobUrl = (repo: string, job: string) =>
