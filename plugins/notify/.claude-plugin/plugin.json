@@ -1,6 +1,6 @@
 {
   "name": "notify",
-  "description": "Desktop notification (notify-send) when Claude finishes, fails, or waits for a permission or an answer. Names the herdr workspace and agent, and stays quiet for the pane you are looking at.",
+  "description": "Desktop notification (D-Bus) when Claude finishes, fails, or waits for a permission or an answer. Names the herdr workspace and agent, and stays quiet for the pane you are looking at.",
   "author": { "name": "aguiddir" },
   "repository": "https://github.com/aguiddir/claude-config",
   "license": "MIT"

@@ -13,7 +13,7 @@ Needs `claude`, `python3` and `git`. `npm` is optional (Playwright CLI). Skip pa
 
 ## Just the desktop notifications
 
-A notification when Claude finishes, fails, asks for a permission or asks a question. In [herdr](https://herdr.dev) it names the workspace and the agent session, and stays quiet for the pane you are looking at. Linux only (`notify-send`); needs `jq`.
+A notification when Claude finishes, fails, asks for a permission or asks a question. In [herdr](https://herdr.dev) it names the workspace and the agent session, and stays quiet for the pane you are looking at. Each session keeps a single notification, replaced in place, that leaves the screen after a few seconds. Linux only (D-Bus notifications, tested on GNOME); needs `jq`.
 
 ```
 /plugin marketplace add aguiddir/claude-config
@@ -55,7 +55,7 @@ The Jenkins host and job folder (`team.software/github`) are set at the top of `
 | `claude/statusline-command.sh` | `~/.claude/` (symlink) | 3-line status line: repo/git/PR, context/cost, rate limits |
 | `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme |
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
-| `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (`notify-send`) per hook event: done, error, permission, question |
+| `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (D-Bus) per hook event: done, error, permission, question |
 | `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
 | `plugins/ci-watch/` | plugin `ci-watch@claude-config` | Band above the prompt following the current branch's Jenkins build stage by stage, with its Sonar quality gate (a mod) |
 

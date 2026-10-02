@@ -7,7 +7,7 @@ event=$($jq -r '.hook_event_name // empty' <<<"$in")
 type=$($jq -r '.notification_type // empty' <<<"$in")
 msg=$($jq -r '.message // .error // empty' <<<"$in")
 where=$(basename "$($jq -r '.cwd // empty' <<<"$in")")
-urgency=normal
+session=$($jq -r '.session_id // empty' <<<"$in")
 
 # Inside herdr, name the workspace and the agent session instead of the dir
 if [ -n "$HERDR_PANE_ID" ]; then
@@ -27,11 +27,11 @@ if [ -n "$HERDR_PANE_ID" ]; then
 fi
 
 case "$event:$type" in
-  Stop:*)                        title="✅ Travail terminé";           urgency=critical ;;
-  StopFailure:*)                 title="❌ Erreur";                    urgency=critical ;;
-  Notification:permission_prompt) title="🔐 Permission demandée";      urgency=critical ;;
+  Stop:*)                        title="✅ Travail terminé" ;;
+  StopFailure:*)                 title="❌ Erreur" ;;
+  Notification:permission_prompt) title="🔐 Permission demandée" ;;
   Notification:elicitation_dialog)
-                                 title="❓ Claude attend ta réponse";  urgency=critical ;;
+                                 title="❓ Claude attend ta réponse" ;;
   # idle_prompt repeats the Stop notification a minute later; auth_success
   # needs no action
   Notification:idle_prompt|Notification:auth_success) exit 0 ;;
@@ -40,4 +40,19 @@ esac
 
 body=$(printf '%s\n%s' "$agent" "$msg" | sed '/^$/d')
 [ "$event" = Stop ] && [ -z "$body" ] && body="C'est fini"
-notify-send -u "$urgency" -a "Claude Code" "$title${where:+ · $where}" "${body:-…}"
+
+# One notification per session, replaced in place: background agents
+# re-invoke the session, and each turn end would otherwise stack a new one.
+# notify-send 0.7.9 has no --replace-id, so talk to D-Bus directly. Normal
+# urgency and transient: GNOME keeps critical ones on screen until dismissed.
+ids=${XDG_RUNTIME_DIR:-/tmp}/claude-notify
+mkdir -p "$ids"
+idfile=$ids/${session:-none}
+str() { $jq -nr --arg s "$1" '$s|tojson'; }
+id=$(gdbus call --session --dest org.freedesktop.Notifications \
+  --object-path /org/freedesktop/Notifications \
+  --method org.freedesktop.Notifications.Notify \
+  '"Claude Code"' "$(cat "$idfile" 2>/dev/null || echo 0)" '""' \
+  "$(str "$title${where:+ · $where}")" "$(str "${body:-…}")" '[]' \
+  "{'urgency': <byte 1>, 'transient': <true>}" 5000 | sed -E 's/[^ ]* ([0-9]+).*/\1/')
+[ -n "$id" ] && echo "$id" >"$idfile"
