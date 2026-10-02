@@ -48,7 +48,7 @@ The Jenkins host and job folder (`team.software/github`) are set at the top of `
 
 ## Just the PR comments
 
-A band above the prompt lists your open PRs in the repo that have unresolved review threads, with the current branch's PR first whoever wrote it, so it works from `main` too: `💬 review non résolue : #89 (10) · #15 (1)`. `c` in an empty prompt (while new threads have come in and no prompt has been sent since; otherwise `/pr-review`, or `/pr-review 89` for one PR) opens them in a pane, one thread at a time: the code it is about, as a diff, and its whole conversation, badged `↩ répondu` when the PR's author has the last word and `obsolète` when it is about older code. In the pane:
+A band above the prompt lists the open PRs of the repo that have unresolved review threads, in two groups, so it works from `main` too: those to work on (yours, and the current branch's whoever wrote it) and those you review (asked or already reviewed): `💬 à traiter : #89 (9) · en relecture : #73 (10)`. `c` in an empty prompt (while new threads have come in and no prompt has been sent since; otherwise `/pr-review`, or `/pr-review 89` for one PR) opens them in a pane, one thread at a time: the code it is about, as a diff, and its whole conversation, badged `↩ répondu` when the PR's author has the last word and `obsolète` when it is about older code. In the pane:
 
 | Key | Does |
 |---|---|
@@ -62,7 +62,7 @@ A band above the prompt lists your open PRs in the repo that have unresolved rev
 | `o` | opens the thread in the browser |
 | `q` / Esc | closes the pane |
 
-The keys work while the pane holds the keyboard; if it opened without it, ctrl+x tab or a click gives it. Replies and resolutions go through `gh` with your account, with no confirmation beyond the key. The threads are read from GitHub every minute and after each write. Needs `gh`, logged in, and Claude Code 2.1.287 or later.
+The keys work while the pane holds the keyboard; if it opened without it, ctrl+x tab or a click gives it. Replies and resolutions go through `gh` with your account, with no confirmation beyond the key. GitHub is asked every minute for the list of PRs (1 point of its 5000 an hour), and a PR's threads only when it changed, after a write to it, or every ten minutes in case someone else resolved one. Needs `gh`, logged in, and Claude Code 2.1.287 or later.
 
 ```
 /plugin marketplace add aguiddir/claude-config
