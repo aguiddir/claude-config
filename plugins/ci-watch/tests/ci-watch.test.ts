@@ -1,4 +1,6 @@
+import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { bar, jobUrl, minutes, repoOf, sonarKeyOf, toBuild, toGate } from '../hooks/jenkins'
 
@@ -34,61 +36,129 @@ test('sonar key and quality gate', async () => {
 const proc = (stdout: string) => ({
   value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
 })
-const http = (body: unknown) => ({ value: { status: 200, ok: true, headers: {}, text: JSON.stringify(body) } })
+const http = (body: unknown, status = 200) => ({
+  value: { status, ok: status < 400, headers: {}, text: JSON.stringify(body) },
+})
+const GATE_RED = JSON.stringify({ status: 'ERROR', conditions: [{ metricKey: 'new_coverage', status: 'ERROR', actualValue: '62.0', errorThreshold: '80' }] })
 
-test('a running build fills the band, its end raises a toast', async ($, on) => {
-  let isBuilding = true
-  const toasts: string[] = []
+// A fake Jenkins, git, gh and Sonar beneath the plugin, driven by `world`.
+const setUp = ($: Engine, on: On) => {
+  const world = {
+    run: { number: 426, building: true, result: null as string | null, timestamp: Date.now() - 60_000, estimatedDuration: 240_000, duration: 0 },
+    stages: [{ name: 'Prepare', status: 'SUCCESS' }, { name: 'SonarQube', status: 'IN_PROGRESS' }],
+    branchJob: true,
+    jenkinsDown: false,
+    gh: 0,
+    cwds: [] as string[],
+    gateAsks: [] as unknown[],
+    toasts: [] as string[],
+  }
   const clock = mock.clock(on)
   on('session.cwd', () => ({ value: '/repo' }))
-  on('process.run', (_$, e) =>
-    proc(e.argv[1] === 'remote' ? 'git@github.com:softwarevidal/vidal-mcp.git' : e.argv[1] === 'rev-parse' ? 'main' : ''),
-  )
-  on('http.fetch', (_$, e) =>
-    e.url.includes('wfapi')
-      ? http({ stages: [{ name: 'Prepare', status: 'SUCCESS' }, { name: 'Build & Unit tests', status: isBuilding ? 'IN_PROGRESS' : 'FAILED' }] })
-      : http({ number: 426, building: isBuilding, result: isBuilding ? null : 'FAILURE', timestamp: Date.now() - 60_000, estimatedDuration: 240_000, duration: 120_000 }),
-  )
-  on('ui.toast', (_$, e) => (toasts.push(e.text), { value: undefined }))
-  const gateAsks: unknown[] = []
-  on('tool.call', { tool: 'mcp__sonarqube__get_project_quality_gate_status' }, (_$, e) => {
-    gateAsks.push(e)
-    const text = JSON.stringify({ status: 'ERROR', conditions: [{ metricKey: 'new_coverage', status: 'ERROR', actualValue: '62.0', errorThreshold: '80' }] })
-    return { result: text, text }
-  })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
+  on('env.get', () => ({ value: '/home/me' }))
+  on('process.run', (_$, e) => {
+    world.cwds.push(e.init?.cwd ?? '')
+    if (e.argv[0] === 'gh') return (world.gh++, proc('233'))
+    return proc(e.argv[1] === 'remote' ? 'git@github.com:softwarevidal/vidal-mcp.git' : e.argv[1] === 'rev-parse' ? 'main' : '')
+  })
+  on('http.fetch', (_$, e) => {
+    if (world.jenkinsDown) return http({}, 503)
+    if (!world.branchJob && e.url.includes('/job/main/')) return http({}, 404)
+    return e.url.includes('wfapi') ? http({ stages: world.stages }) : http(world.run)
+  })
+  on('tool.call', { tool: 'mcp__sonarqube__get_project_quality_gate_status' }, (_$, e) => {
+    world.gateAsks.push(e)
+    return { result: GATE_RED, text: GATE_RED }
+  })
+  on('ui.toast', (_$, e) => (world.toasts.push(e.text), { value: undefined }))
   // Beneath the band: an engine that draws nothing there.
   on('ui.render', { component: 'AbovePrompt' }, ($, e) => $.ui.resolve(e).Box({}))
-  const band = () => $.ui.mount({ plugin: 'ci-watch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+  const band = async (text: RegExp) => {
+    const ui = await $.ui.mount({ plugin: 'ci-watch', surface: 'terminal', component: 'AbovePrompt', props: { hasSurvey: false } as never })
+    const found = await ui.find({ text })
+    await ui.unmount()
+    return found
+  }
+  const end = (result: string, endedAgoMs: number, sonar = 'SUCCESS') => {
+    world.run = { ...world.run, building: false, result, timestamp: Date.now() - endedAgoMs - 100_000, duration: 100_000 }
+    world.stages = [{ name: 'Prepare', status: 'SUCCESS' }, { name: 'SonarQube', status: sonar }]
+  }
+  const start = async () => {
+    await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+    await clock.settle()
+  }
+  return { world, clock, band, end, start }
+}
 
-  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
-  await clock.settle()
+test('a running build fills the band; its end toasts the result, then the red gate once settled', async ($, on) => {
+  const { world, clock, band, end, start } = setUp($, on)
+  await start()
+  expect(await band(/● CI vidal-mcp · main #426/)).toBeDefined()
+  expect(await band(/SonarQube/)).toBeDefined()
+  // The branch has its own job: gh is never asked for the PR.
+  expect(world.gh).toBe(0)
 
-  const running = await band()
-  expect(await running.find({ text: /● CI vidal-mcp · main #426/ })).toBeDefined()
-  expect(await running.find({ text: /Build & Unit tests/ })).toBeDefined()
-  await running.unmount()
-
-  isBuilding = false
+  end('FAILURE', 5_000)
   await clock.advance(10_000)
-  expect(toasts).toEqual(['✗ CI vidal-mcp · main #426 : FAILURE', '✗ Sonar vidal-mcp · main : quality gate en échec'])
-  // No sonar-project.properties here: the repo name is the key, the branch the ref.
-  expect(gateAsks[0]).toMatchObject({ projectKey: 'vidal-mcp', branch: 'main' })
-  const done = await band()
-  expect(await done.find({ text: /à l'étape Build & Unit tests/ })).toBeDefined()
-  expect(await done.find({ text: /Sonar ✗ quality gate ERROR · new_coverage 62.0 \(seuil 80\)/ })).toBeDefined()
-  await done.unmount()
+  expect(world.toasts).toEqual(['✗ CI vidal-mcp · main #426 : FAILURE'])
+  // Too soon after the end for the gate to be this build's.
+  expect(world.gateAsks).toHaveLength(0)
+
+  end('FAILURE', 40_000)
+  await clock.advance(10_000)
+  expect(world.gateAsks[0]).toMatchObject({ projectKey: 'vidal-mcp', branch: 'main' })
+  expect(world.toasts[1]).toBe('✗ Sonar vidal-mcp · main : quality gate en échec')
+  expect(await band(/Sonar ✗ quality gate ERROR · new_coverage 62.0 \(seuil 80\)/)).toBeDefined()
+  await clock.advance(10_000)
+  expect(world.toasts).toHaveLength(2)
+})
+
+test('a Jenkins blip keeps the band, so the end is still toasted', async ($, on) => {
+  const { world, clock, band, end, start } = setUp($, on)
+  await start()
+  world.jenkinsDown = true
+  await clock.advance(10_000)
+  expect(await band(/#426/)).toBeDefined()
+  end('SUCCESS', 1_000)
+  world.jenkinsDown = false
+  await clock.advance(10_000)
+  expect(world.toasts).toEqual(['✓ CI vidal-mcp · main #426 : SUCCESS'])
+})
+
+test('an old red gate seen at start is not toasted, and is read once', async ($, on) => {
+  const { world, clock, end, start } = setUp($, on)
+  end('SUCCESS', 3 * 3_600_000)
+  await start()
+  await clock.advance(30_000)
+  expect(world.toasts).toEqual([])
+  expect(world.gateAsks).toHaveLength(1)
+})
+
+test('a build that failed before its Sonar stage shows no gate', async ($, on) => {
+  const { world, clock, end, start } = setUp($, on)
+  await start()
+  end('FAILURE', 40_000, 'NOT_EXECUTED')
+  await clock.advance(10_000)
+  expect(world.gateAsks).toHaveLength(0)
+  expect(world.toasts).toEqual(['✗ CI vidal-mcp · main #426 : FAILURE'])
+})
+
+test('without a branch job, the PR job is followed and its gate read by PR', async ($, on) => {
+  const { world, clock, band, end, start } = setUp($, on)
+  world.branchJob = false
+  await start()
+  expect(await band(/vidal-mcp · PR-233 #426/)).toBeDefined()
+  end('SUCCESS', 40_000)
+  await clock.advance(10_000)
+  expect(world.gateAsks[0]).toMatchObject({ pullRequest: '233' })
 })
 
 test('/ci points the band at another repo', async ($, on) => {
-  const cwds: string[] = []
-  const clock = mock.clock(on)
-  on('env.get', () => ({ value: '/home/me' }))
-  on('session.cwd', () => ({ value: '/elsewhere' }))
-  on('process.run', (_$, e) => (cwds.push(e.init?.cwd ?? ''), proc('')))
+  const { world, clock } = setUp($, on)
   const reply = await $.command.run({ command: 'ci', args: '~/PycharmProjects/data-bridge' } as never)
   expect(reply).toMatchObject({ text: 'CI suivie : /home/me/PycharmProjects/data-bridge' })
   await clock.settle()
-  expect(cwds[0]).toBe('/home/me/PycharmProjects/data-bridge')
+  expect(world.cwds).toContain('/home/me/PycharmProjects/data-bridge')
 })

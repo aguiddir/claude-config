@@ -28,12 +28,13 @@ export const toBuild = (label: string, url: string, run: RunJson, wf: StagesJson
     isBuilding: run.building,
     result: run.result,
     // An estimate only: a build that runs past it holds at 99 %.
+    hasEstimate: estimated > 0,
     percent: run.building ? (estimated ? Math.min(99, Math.floor((elapsed / estimated) * 100)) : 0) : 100,
     remainingMs: run.building && estimated ? Math.max(0, estimated - elapsed) : 0,
     durationMs: run.building ? elapsed : run.duration,
     endedAt: run.building ? 0 : run.timestamp + run.duration,
     stages: (wf.stages ?? []).map(s => ({ name: s.name, status: s.status })),
-    gate: null,
+    gate: undefined,
   }
 }
 
@@ -63,3 +64,8 @@ export const toGate = (json: GateJson): Gate => ({
     .filter(c => c.status === 'ERROR')
     .map(c => ({ metric: c.metricKey, actual: c.actualValue ?? '?', threshold: c.errorThreshold ?? '?' })),
 })
+
+// The gate only belongs to this build once its own Sonar stage ran: a build
+// that failed earlier would show the previous analysis's gate.
+export const sonarRan = (stages: readonly { name: string; status: string }[]) =>
+  stages.some(s => /sonar/i.test(s.name) && s.status === 'SUCCESS')

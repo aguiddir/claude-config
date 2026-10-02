@@ -35,7 +35,7 @@ Messages are in French: edit the strings in `plugins/replay/hooks/register.tsx` 
 
 ## Just the CI watch
 
-For Vidal repos built on `jenkins.vidal.net`. A band above the prompt follows the Jenkins build of the current branch, or of its PR (`PR-<n>`) when the branch has no job of its own: a progress bar from Jenkins' estimated duration, the stage running, each stage's state, and a link to the build. When the build ends, a toast gives its result, and the band shows the SonarQube quality gate of the branch or PR with the conditions that failed. A finished build stays on the band for 15 minutes.
+For Vidal repos built on `jenkins.vidal.net`. A band above the prompt follows the Jenkins build of the current branch, or of its PR (`PR-<n>`) when the branch has no job of its own: a progress bar from Jenkins' estimated duration, the stage running, each stage's state, and a link to the build. When the build ends, a toast gives its result. Once the build's own SonarQube stage has run, the band shows the quality gate of the branch or PR with the conditions that failed, read 30 seconds after the end so that it is this build's analysis, and a toast says when it fails. A finished build stays on the band for 15 minutes.
 
 It reads the repo and branch of the directory Claude Code runs in and polls Jenkins every 10 seconds, anonymously, from the Vidal network. `/ci <path>` follows another repo, `/ci` alone goes back to the session's directory. Needs `gh` (to find the PR) and, for the quality gate, the SonarQube MCP server connected in Claude Code. Needs Claude Code 2.1.287 or later.
 

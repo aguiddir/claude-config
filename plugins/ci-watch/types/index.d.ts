@@ -11,12 +11,14 @@ export type Build = {
   url: string
   isBuilding: boolean
   result: string | null
+  hasEstimate: boolean
   percent: number
   remainingMs: number
   durationMs: number
   endedAt: number
   stages: Stage[]
-  gate: Gate | null
+  // undefined until read; null when read and there is none.
+  gate?: Gate | null
 }
 
 declare module 'claude-code' {
