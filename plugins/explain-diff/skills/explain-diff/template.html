@@ -34,6 +34,7 @@
   .verdict.merge { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
   .verdict.fix   { background: color-mix(in srgb, var(--warn) 15%, transparent); color: var(--warn); }
   .verdict.discuss { background: color-mix(in srgb, var(--bad) 15%, transparent); color: var(--bad); }
+  .verdict.evidence { background: color-mix(in srgb, var(--muted) 15%, transparent); color: var(--muted); }
   .two { display: grid; gap: 16px; grid-template-columns: 1fr; }
   .diagrams { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
   @media (min-width: 720px) { .two { grid-template-columns: 1fr 1fr; } }
@@ -59,7 +60,7 @@
 
   <h2>En une phrase</h2>
   <p>CE QUI A CHANGÉ ET POURQUOI.</p>
-  <span class="verdict merge">Verdict : merge</span> <!-- classes : merge | fix | discuss -->
+  <span class="verdict merge">Verdict : merge</span> <!-- classes : merge | fix | discuss | evidence (pas assez de preuves) -->
 
   <h2>Avant / après</h2>
   <h3>Flux 1 · NOM DU FLUX</h3>
