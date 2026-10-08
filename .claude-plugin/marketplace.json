@@ -24,6 +24,11 @@
       "name": "pr-comments",
       "source": "./plugins/pr-comments",
       "description": "A pane to work through the review threads of your PRs and the current branch's: hand some to Claude, reply, resolve"
+    },
+    {
+      "name": "explain-diff",
+      "source": "./plugins/explain-diff",
+      "description": "/explain-diff publishes a private web page to understand a change before merging it: before/after diagrams, files by intent, what was verified"
     }
   ]
 }
