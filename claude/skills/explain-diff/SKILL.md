@@ -26,9 +26,17 @@ or not sharing it is not a reason to fall back to terminal prose.
 | a path | that module as it is today (no diff: explain how it works) |
 
 Read the code around the diff and trace each changed flow end to end
-before writing. Run the checks the repo's CI runs (tests, type check);
-with no CI config, the toolchain's own (`claude plugin test` for a mod,
-`pytest`, `npm test`). Never explain from the diff alone.
+before writing. Never explain from the diff alone.
+
+A check counts only when it ran on the revision explained. Reuse this
+session's results when no edit came after them; otherwise, or when the
+working tree is not that revision (a PR or a range seen from another
+branch), run the checks in a worktree at that revision
+(`git worktree add <scratchpad>/rev <sha>`, removed afterwards). When
+that is not possible, the Verified list says "not verified on this
+revision", and the verdict cannot be merge. Checks are the repo's CI
+checks (tests, type check) or, with no CI config, the toolchain's own
+(`claude plugin test` for a mod, `pytest`, `npm test`).
 
 ## Form
 
@@ -40,8 +48,20 @@ The medium follows what there is to understand, not the file count.
 
 ## The page
 
-**REQUIRED SUB-SKILLS:** `artifact-design` for the page, `artifact-diagramming` for every diagram.
-The page is plain HTML: no `quickstart`, no Artifact type, no runtime capability, no preview before publishing. The reader is waiting.
+Write the page in your scratchpad from `template.html` in this skill's
+directory (read it, write the filled copy), then publish it with the
+Artifact tool. The template
+already handles theme, dark mode, phone width and Mermaid. Do not load
+`artifact-design`, do not call `quickstart`, do not preview before
+publishing: the reader is waiting.
+
+Diagrams are Mermaid (`flowchart`, `sequenceDiagram`, `stateDiagram-v2`)
+inside `<pre class="diagram">` (not `mermaid`: the Artifact service
+hijacks that class), 3 to 10 lines each. In a flowchart the
+changed nodes get the `changed` class as in the template; labels with
+`/`, `(` or `[` go in quotes: `A["/ci 231"]`. A label is 4 words at
+most, or breaks with `<br>`: a wide flow shrinks to fit its card, and
+long labels are what makes it wide. No hand-drawn SVG.
 
 Sections, in this order, each with its heading. Leave a section out only
 when it would be empty, and say so in one line.
