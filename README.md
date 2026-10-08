@@ -69,7 +69,7 @@ The keys work while the pane holds the keyboard; if it opened without it, ctrl+x
 /plugin install pr-comments@claude-config
 ```
 
-## Just the explain-diff
+## Just /explain-diff
 
 Reading a diff is the slowest way to understand what an agent did. `/explain-diff` (or "explique-moi ce que tu as changé") publishes a private web page about the session's edits, a commit range (`/explain-diff A^..B`), a PR (`/explain-diff #42`) or a module (`/explain-diff src/billing`): what changed in one sentence and a verdict, a before/after diagram of each changed flow, the files grouped by intent, the decisions made and the options not taken, the boundaries crossed (API, schema, config, security), what was verified and what was not, and the open points. A change that alters no behaviour (a rename, a config value, a bump) stays in the terminal, whatever its size. The page is in French, written at about 80% of [ASD-STE100](https://www.asd-ste100.org/). After [Karpathy's post](https://x.com/karpathy/status/2105819303471976479) on the output formats that are fastest to understand. Needs the Artifact tool (claude.ai login).
 
