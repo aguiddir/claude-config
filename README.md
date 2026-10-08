@@ -71,7 +71,7 @@ The keys work while the pane holds the keyboard; if it opened without it, ctrl+x
 
 ## Just the explain-diff
 
-Reading a diff is the slowest way to understand what an agent did. `/explain-diff` (or "explique-moi ce que tu as changé") publishes a private web page about the session's edits, a commit range (`/explain-diff A^..B`), a PR (`/explain-diff #42`) or a module (`/explain-diff src/billing`): what changed in one sentence and a verdict, a before/after diagram of each changed flow, the files grouped by intent, the decisions made and the options not taken, the boundaries crossed (API, schema, config, security), what was verified and what was not, and the open points. A change that alters no behaviour (a rename, a config value, a bump) stays in the terminal, whatever its size. The page is in French, written at about 80% of [ASD-STE100](https://www.asd-ste100.org/). After [Karpathy's post](https://x.com/karpathy/status/2105819303471976479) on the output formats that are fastest to understand. Needs the Artifact tool (claude.ai login).
+Reading a diff is the slowest way to understand what an agent did. `/explain-diff` (or "explique-moi ce que tu as changé") publishes a private web page about the session's edits, a commit range (`/explain-diff A^..B`), a PR (`/explain-diff #42`) or a module (`/explain-diff src/billing`): what changed in one sentence, a before/after diagram of each changed flow, the files grouped by intent, the decisions made and the options not taken, the boundaries crossed (API, schema, config, security), and the open points. It runs no check and gives no verdict: the reader judges. A change that alters no behaviour (a rename, a config value, a bump) stays in the terminal, whatever its size. The page is in French, written at about 80% of [ASD-STE100](https://www.asd-ste100.org/). After [Karpathy's post](https://x.com/karpathy/status/2105819303471976479) on the output formats that are fastest to understand. Needs the Artifact tool (claude.ai login).
 
 ```
 /plugin marketplace add aguiddir/claude-config
@@ -91,7 +91,7 @@ Reading a diff is the slowest way to understand what an agent did. `/explain-dif
 | `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
 | `plugins/ci-watch/` | plugin `ci-watch@claude-config` | Band above the prompt following the current branch's Jenkins build stage by stage, with its Sonar quality gate (a mod) |
 | `plugins/pr-comments/` | plugin `pr-comments@claude-config` | Band and pane for the PR's unresolved review threads: send some to Claude, reply, resolve (a mod) |
-| `plugins/explain-diff/` | plugin `explain-diff@claude-config` | `/explain-diff`: a private web page to understand a change before merging it (before/after diagrams, files by intent, what was verified) |
+| `plugins/explain-diff/` | plugin `explain-diff@claude-config` | `/explain-diff`: a private web page to understand a change before merging it (before/after diagrams, files by intent, decisions) |
 
 Symlinked files take effect as soon as you edit them here. `settings.json` is merged instead of linked because Claude Code rewrites it (`/config`, `/model`); existing keys and permission rules are kept, and the previous file is saved as `.bak.<date>`.
 

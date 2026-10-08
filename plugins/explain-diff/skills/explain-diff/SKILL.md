@@ -28,24 +28,16 @@ or not sharing it is not a reason to fall back to terminal prose.
 Read the code around the diff and trace each changed flow end to end
 before writing. Never explain from the diff alone.
 
-A check counts only when it ran on the revision explained. Reuse this
-session's results when no edit came after them; otherwise, or when the
-working tree is not that revision (a PR or a range seen from another
-branch), run the checks in a worktree at that revision
-(`git worktree add <scratchpad>/rev <sha>`, removed afterwards). When
-that is not possible, the Verified list says "not verified on this
-revision", and the verdict cannot be merge. Checks are the repo's CI
-checks (tests, type check) or, with no CI config, the toolchain's own
-(`claude plugin test` for a mod, `pytest`, `npm test`): local, under a
-minute, no external service, no credential. Anything else is listed as
-not verified.
+Run no check: no tests, no CI, no analysis. The page explains, the
+reader judges. A test result is evidence only when this session
+already ran it on the revision explained.
 
 ## Form
 
 The medium follows what there is to understand, not the file count.
 
 - No behaviour changes (rename, moved code, a local fix, a config value, a dependency bump), whatever the number of files → **8 lines max in the terminal**, in the writing style below.
-- At least one behaviour or flow changes → **a private web page** (Artifact), then 1-3 lines in the terminal: the verdict, the link, the open points the reader must act on.
+- At least one behaviour or flow changes → **a private web page** (Artifact), then 1-3 lines in the terminal: the one sentence, the link, the open points the reader must act on.
 - A rule with several cases (thresholds, routing, permissions) → on the page, a table `case → before → after` next to its diagram, one row per case. That is the only interactivity: no script.
 - No Artifact tool, or the publish fails → the same 1-3 lines with the path of the HTML file. Never name a page that does not exist.
 
@@ -73,13 +65,12 @@ before that, and writing is the slowest step. The cap never drops an
 impact: a fourth flow, a long list of files or extra evidence goes in
 a `<details>` block under its section, as in the template.
 
-1. **In one sentence** - what changed and why. Then the verdict: merge, fix first, discuss, or not enough evidence (a check did not run, a flow could not be traced).
+1. **In one sentence** - what changed and why.
 2. **Before / after** - one diagram per flow that changes shape (sequence, state, or data flow), 3 at most. Changed parts stand out. A flow that did not change is not drawn. A flow with two states and one transition, or a changed value, gets one sentence instead. Under each flow, one sentence of observable effect with its evidence: who is affected, in which situation, what result changes ("a 45 s request failed before; it now succeeds, and an outage makes the caller wait longer").
 3. **Files by intent** - group the files by what they achieve, not by path. One line per group, then the files; a file that serves several intents is listed by function (`register.tsx: target()`).
 4. **Decisions** - each choice made, the option not taken, and where it comes from: a commit message, spec or comment (documented) or the code alone (inferred). One line each.
 5. **Boundaries crossed** - API contract, DB schema, config, permissions, security, public behavior. Say "none" when none.
-6. **Verified / not verified** - two lists: what ran with its result, what did not run and why.
-7. **Open points** - risks, doubts, anything to check by hand.
+6. **Open points** - risks, doubts, anything to check by hand, and any flow that could not be traced.
 
 Write the page and the terminal answer in French, whatever the language of the code and its comments.
 
@@ -100,5 +91,5 @@ Write the page and the terminal answer in French, whatever the language of the c
 | Terminal prose because "they just want a quick validation" | Quick to read is the goal. The page is quicker. |
 | Sections by commit | Sections by intent. One commit can carry two intents, two commits one. |
 | Diagram of the whole system | Only the flows that changed, before and after. |
-| "Tests pass" with no names | Command, count, result. What did not run is a section, not a footnote. |
+| "Tests pass" with no names | Command, count, result, from a run this session already made. |
 | Explaining the diff line by line | The diff is one click away. Explain what the reader cannot see in it. |
