@@ -68,7 +68,7 @@ a `<details>` block under its section, as in the template.
 1. **In one sentence** - what changed and why.
 2. **Before / after** - one diagram per flow that changes shape (sequence, state, or data flow), 3 at most. Changed parts stand out. A flow that did not change is not drawn. A flow with two states and one transition, or a changed value, gets one sentence instead. Under each flow, one sentence of observable effect with its evidence: who is affected, in which situation, what result changes ("a 45 s request failed before; it now succeeds, and an outage makes the caller wait longer").
 3. **Files by intent** - group the files by what they achieve, not by path. One line per group, then the files; a file that serves several intents is listed by function (`register.tsx: target()`).
-4. **Decisions** - each choice made, the option not taken, and where it comes from: a commit message, spec or comment (documented) or the code alone (inferred). One line each.
+4. **Decisions** - each choice made, one line each. The choice and the option not taken each name their own source: a commit message, spec or comment (documented) or the code alone (inferred). Name an option not taken only when a source names it; otherwise write "option not taken: not documented". Never invent one to fill the line.
 5. **Boundaries crossed** - API contract, DB schema, config, permissions, security, public behavior. Say "none" when none.
 6. **Open points** - risks, doubts, anything to check by hand, and any flow that could not be traced.
 
@@ -82,6 +82,7 @@ Write the page and the terminal answer in French, whatever the language of the c
 - Active voice, present tense. "The poll keeps its result" not "the result is kept by the poll".
 - The same word for the same thing throughout. Pick one of "build/job", "thread/conversation", and keep it.
 - Every claim about behaviour names its evidence: `file.py: function()`, a test with its result, a commit. A claim with no evidence goes to open points.
+- A comparison with code outside the change ("like module X does") cites the `file:line` you read. Not read, no comparison.
 - No filler: no "note that", no "it is worth mentioning", no summary of what the diff already shows.
 
 ## Common mistakes
