@@ -64,10 +64,14 @@ most, or breaks with `<br>`: a wide flow shrinks to fit its card, and
 long labels are what makes it wide. No hand-drawn SVG.
 
 Sections, in this order, each with its heading. Leave a section out only
-when it would be empty, and say so in one line.
+when it would be empty, and say so in one line. What is open when the
+page loads stays under 500 words and 3 diagrams: a tired reader stops
+before that, and writing is the slowest step. The cap never drops an
+impact: a fourth flow, a long list of files or extra evidence goes in
+a `<details>` block under its section, as in the template.
 
 1. **In one sentence** - what changed and why. Then the verdict: merge, fix first, or discuss.
-2. **Before / after** - one diagram per changed flow (sequence, state, or data flow). Changed parts stand out. A flow that did not change is not drawn. A flow with two states and one transition gets one sentence instead.
+2. **Before / after** - one diagram per flow that changes shape (sequence, state, or data flow), 3 at most. Changed parts stand out. A flow that did not change is not drawn. A flow with two states and one transition, or a changed value, gets one sentence instead. Under each flow, one sentence of observable effect with its evidence: who is affected, in which situation, what result changes ("a 45 s request failed before; it now succeeds, and an outage makes the caller wait longer").
 3. **Files by intent** - group the files by what they achieve, not by path. One line per group, then the files; a file that serves several intents is listed by function (`register.tsx: target()`).
 4. **Decisions** - each choice made, and the option not taken, in one line each.
 5. **Boundaries crossed** - API contract, DB schema, config, permissions, security, public behavior. Say "none" when none.
