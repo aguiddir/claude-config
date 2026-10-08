@@ -75,6 +75,7 @@ The keys work while the pane holds the keyboard; if it opened without it, ctrl+x
 |---|---|---|
 | `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` (symlink) | Global instructions: autonomy, long sessions, pre-review format |
 | `claude/rules/git-commit.md` | `~/.claude/rules/` (symlink) | Commit message rules: why over what, fixup commits for review changes |
+| `claude/skills/explain-diff/` | `~/.claude/skills/` (symlink) | `/explain-diff`: a private web page to understand a change before merging it (before/after diagram, files by intent, what was verified) |
 | `claude/statusline-command.sh` | `~/.claude/` (symlink) | 3-line status line: repo/git/PR, context/cost, rate limits |
 | `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme |
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
