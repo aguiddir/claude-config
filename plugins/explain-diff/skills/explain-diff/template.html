@@ -42,6 +42,7 @@
   ul { padding-left: 20px; } li + li { margin-top: 4px; }
   ul.files { list-style: none; padding-left: 12px; color: var(--muted); font-size: .9rem; }
   .ok::before   { content: "✔ "; color: var(--ok); }
+  details { margin: 8px 0; } details summary { cursor: pointer; color: var(--muted); }
   .todo::before { content: "✘ "; color: var(--bad); }
   /* class "diagram", not "mermaid": the Artifact service claims every pre.mermaid and
      re-renders it with its own 16px runtime, ignoring the settings below */
@@ -77,6 +78,14 @@ classDef changed stroke:#2563eb,stroke-width:2px
       </pre>
     </div>
   </div>
+
+  <details><summary>Flux 4 · NOM DU FLUX (replié : au-delà des 3 diagrammes)</summary>
+    <div class="diagrams"><div class="card"><pre class="diagram">
+flowchart LR
+  A[avant] --> B[après]:::changed
+classDef changed stroke:#2563eb,stroke-width:2px
+    </pre></div></div>
+  </details>
 
   <h2>Fichiers par intention</h2>
   <ul>
