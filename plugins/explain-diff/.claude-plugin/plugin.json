@@ -1,0 +1,7 @@
+{
+  "name": "explain-diff",
+  "description": "/explain-diff: a private web page to understand a change before merging it, with before/after diagrams, files by intent and what was verified",
+  "author": { "name": "aguiddir" },
+  "repository": "https://github.com/aguiddir/claude-config",
+  "license": "MIT"
+}

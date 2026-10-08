@@ -60,8 +60,6 @@ link "$REPO/claude/CLAUDE.md" "$CLAUDE_DIR/CLAUDE.md"
 link "$REPO/claude/statusline-command.sh" "$CLAUDE_DIR/statusline-command.sh"
 # Link rules one by one so ones added outside this repo survive
 for f in "$REPO"/claude/rules/*.md; do link "$f" "$CLAUDE_DIR/rules/${f##*/}"; done
-# Same for skills: one directory each, so plugin-installed skills stay untouched
-for d in "$REPO"/claude/skills/*/; do d=${d%/}; link "$d" "$CLAUDE_DIR/skills/${d##*/}"; done
 
 # --- settings.json --------------------------------------------------------
 step "Merge settings.json"
