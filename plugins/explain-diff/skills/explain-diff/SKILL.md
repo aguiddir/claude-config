@@ -16,6 +16,11 @@ https://x.com/karpathy/status/2105819303471976479).
 The page is for the person's own understanding. Being alone, in a hurry,
 or not sharing it is not a reason to fall back to terminal prose.
 
+The reader is a reviewer, often a lead dev, with CI behind them: lint,
+types and tests already ran. They want what the change does
+functionally and what it can break, written like a spec they can
+discuss with the author. How it is coded comes last, folded.
+
 ## Scope
 
 | Argument | Scope |
@@ -38,7 +43,7 @@ The medium follows what there is to understand, not the file count.
 
 - No behaviour changes (rename, moved code, a local fix, a config value, a dependency bump), whatever the number of files → **8 lines max in the terminal**, in the writing style below.
 - At least one behaviour or flow changes → **a private web page** (Artifact), then 1-3 lines in the terminal: the one sentence, the link, the open points the reader must act on.
-- A rule with several cases (thresholds, routing, permissions) → on the page, a table `case → before → after` next to its diagram, one row per case. That is the only interactivity: no script.
+- No script on the page besides Mermaid: the only interactivity is a `<details>` block.
 - No Artifact tool, or the publish fails → the same 1-3 lines with the path of the HTML file. Never name a page that does not exist.
 
 ## The page
@@ -65,12 +70,15 @@ before that, and writing is the slowest step. The cap never drops an
 impact: a fourth flow, a long list of files or extra evidence goes in
 a `<details>` block under its section, as in the template.
 
-1. **In one sentence** - what changed and why.
-2. **Before / after** - one diagram per flow that changes shape (sequence, state, or data flow), 3 at most. Changed parts stand out. A flow that did not change is not drawn. A flow with two states and one transition, or a changed value, gets one sentence instead. Under each flow, one sentence of observable effect with its evidence: who is affected, in which situation, what result changes ("a 45 s request failed before; it now succeeds, and an outage makes the caller wait longer").
-3. **Files by intent** - group the files by what they achieve, not by path. One line per group, then the files; a file that serves several intents is listed by function (`register.tsx: target()`).
-4. **Decisions** - each choice made, one line each. The choice and the option not taken each name their own source: a commit message, spec or comment (documented) or the code alone (inferred). Name an option not taken only when a source names it; otherwise write "option not taken: not documented". Never invent one to fill the line.
-5. **Boundaries crossed** - API contract, DB schema, config, permissions, security, public behavior. Say "none" when none.
-6. **Open points** - risks, doubts, anything to check by hand, and any flow that could not be traced.
+1. **In one sentence** - what changes, for whom, and why.
+2. **What it does** - the behaviour as a functional spec. First a table `situation → before → after`, one row per situation a user, a caller or the data can be in, each row with its evidence. Then one diagram per flow that changes shape, 3 at most: a user journey, a business flow or a state machine, never a chain of function calls. Changed parts stand out. A flow that did not change is not drawn.
+3. **Impacts** - who and what else the change reaches: users, other teams or services, callers of a changed API, existing data, DB schema, config, permissions, security. For each, what changes for them and what can break ("existing imports keep the old format; a re-import converts them"). Say "aucun" when none.
+4. **Questions to settle** - functional ambiguities, cases the change does not cover, behaviour the code decides with no spec or ticket behind it, anything to check by hand, any flow that could not be traced. Write each as a question the reader can put to the author.
+5. **Technical details** - folded in one `<details>` block, outside the word cap:
+   - Files by intent: group the files by what they achieve, not by path. One line per group, then the files; a file that serves several intents is listed by function (`register.tsx: target()`).
+   - Decisions: each choice made, one line each. The choice and the option not taken each name their own source: a commit message, spec or comment (documented) or the code alone (inferred). Name an option not taken only when a source names it; otherwise write "option not taken: not documented". Never invent one to fill the line.
+
+Leave out what CI already checks: types, lint, formatting, test coverage.
 
 Write the page and the terminal answer in French, whatever the language of the code and its comments.
 
@@ -82,6 +90,7 @@ Write the page and the terminal answer in French, whatever the language of the c
 - Active voice, present tense. "The poll keeps its result" not "the result is kept by the poll".
 - The same word for the same thing throughout. Pick one of "build/job", "thread/conversation", and keep it.
 - Every claim about behaviour names its evidence: `file.py: function()`, a test with its result, a commit. A claim with no evidence goes to open points.
+- Name things by what they mean to the business (the prescription, the import, the user), not by their class or function. Code names appear only as evidence.
 - A comparison with code outside the change ("like module X does") cites the `file:line` you read. Not read, no comparison.
 - No filler: no "note that", no "it is worth mentioning", no summary of what the diff already shows.
 
@@ -92,5 +101,7 @@ Write the page and the terminal answer in French, whatever the language of the c
 | Terminal prose because "they just want a quick validation" | Quick to read is the goal. The page is quicker. |
 | Sections by commit | Sections by intent. One commit can carry two intents, two commits one. |
 | Diagram of the whole system | Only the flows that changed, before and after. |
+| Diagram of function calls | The journey or business flow the calls serve. Code goes under technical details. |
+| Files and decisions open on the page | Folded under technical details. The reader opens them if the spec raises a doubt. |
 | "Tests pass" with no names | Command, count, result, from a run this session already made. |
 | Explaining the diff line by line | The diff is one click away. Explain what the reader cannot see in it. |

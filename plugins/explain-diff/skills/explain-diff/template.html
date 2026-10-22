@@ -35,6 +35,11 @@
   .card h4 { margin: 0 0 8px; font-size: .85rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   ul { padding-left: 20px; } li + li { margin-top: 4px; }
   ul.files { list-style: none; padding-left: 12px; color: var(--muted); font-size: .9rem; }
+  .table { overflow-x: auto; }
+  table { border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  small { color: var(--muted); }
   details { margin: 8px 0; } details summary { cursor: pointer; color: var(--muted); }
   /* class "diagram", not "mermaid": the Artifact service claims every pre.mermaid and
      re-renders it with its own 16px runtime, ignoring the settings below */
@@ -50,9 +55,14 @@
   <p class="meta">PORTÉE (ex. <code>33657bf..bac6e75</code> · 5 fichiers · +143/−42) · DATE</p>
 
   <h2>En une phrase</h2>
-  <p>CE QUI A CHANGÉ ET POURQUOI.</p>
+  <p>CE QUI CHANGE, POUR QUI, ET POURQUOI.</p>
 
-  <h2>Avant / après</h2>
+  <h2>Ce que ça fait</h2>
+  <div class="table"><table>
+    <tr><th>Situation</th><th>Avant</th><th>Après</th></tr>
+    <tr><td>L'UTILISATEUR TAPE <code>/ci 231</code></td><td>bande vide</td><td>bande du job PR-231 et réponse <small>(<code>ci.ts: target()</code>)</small></td></tr>
+  </table></div>
+
   <h3>Flux 1 · NOM DU FLUX</h3>
   <div class="diagrams">
     <div class="card"><h4>Avant</h4>
@@ -78,25 +88,28 @@ classDef changed stroke:#2563eb,stroke-width:2px
     </pre></div></div>
   </details>
 
-  <h2>Fichiers par intention</h2>
+  <h2>Impacts</h2>
   <ul>
-    <li>INTENTION 1
-      <ul class="files"><li><code>fichier.ts: fonction()</code></li></ul>
-    </li>
+    <li>QUI OU QUOI (utilisateurs, autre service, appelants d'une API, données existantes, config, droits) : CE QUI CHANGE POUR EUX, CE QUI PEUT CASSER. <small>(<code>preuve</code>)</small></li>
   </ul>
 
-  <h2>Décisions</h2>
+  <h2>Questions à trancher</h2>
   <ul>
-    <li>CHOIX FAIT (documenté : commit <code>abc1234</code>) — option écartée : ALTERNATIVE (déduit : <code>fichier.java:43</code>) | non documentée.</li>
+    <li>QUESTION À POSER À L'AUTEUR (cas non couvert, comportement sans spec, vérification à la main) ?</li>
   </ul>
 
-  <h2>Frontières franchies</h2>
-  <p>API, schéma de base, config, permissions, sécurité, comportement public : aucune.</p>
-
-  <h2>Points ouverts</h2>
-  <ul>
-    <li>RISQUE OU DOUTE, et comment le vérifier à la main.</li>
-  </ul>
+  <details><summary>Détails techniques</summary>
+    <h3>Fichiers par intention</h3>
+    <ul>
+      <li>INTENTION 1
+        <ul class="files"><li><code>fichier.ts: fonction()</code></li></ul>
+      </li>
+    </ul>
+    <h3>Décisions</h3>
+    <ul>
+      <li>CHOIX FAIT (documenté : commit <code>abc1234</code>) — option écartée : ALTERNATIVE (déduit : <code>fichier.java:43</code>) | non documentée.</li>
+    </ul>
+  </details>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I" crossorigin="anonymous"></script>
 <script>
