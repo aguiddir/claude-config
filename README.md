@@ -84,8 +84,9 @@ Reading a diff is the slowest way to understand what an agent did. `/explain-dif
 |---|---|---|
 | `claude/CLAUDE.md` | `~/.claude/CLAUDE.md` (symlink) | Global instructions: autonomy, long sessions, pre-review format |
 | `claude/rules/git-commit.md` | `~/.claude/rules/` (symlink) | Commit message rules: why over what, fixup commits for review changes |
+| `claude/rules/github.md` | `~/.claude/rules/` (symlink) | Sign what Claude posts on GitHub, so a reader knows an agent wrote it |
 | `claude/statusline-command.sh` | `~/.claude/` (symlink) | 3-line status line: repo/git/PR, context/cost, rate limits |
-| `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme |
+| `claude/settings.json` | merged into `~/.claude/settings.json` | Auto mode, status line, Opus effort, theme, the hook that refuses an unsigned GitHub post |
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
 | `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (D-Bus) per hook event: done, error, permission, question |
 | `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
@@ -100,6 +101,9 @@ The installer also sets up:
 - **codebase-memory-mcp**: code knowledge-graph MCP server, from the release tarball after a SHA-256 check, registered for Claude Code only.
 - **jq** in `~/.local/bin`, from the release binary after a SHA-256 check, when it is not already installed. The notify plugin needs it.
 - **Playwright agent CLI** with its skills, when `npm` is available.
+- **Picks from the team's [harnais](https://github.com/softwarevidal/harnais)** (private), without installing its plugin, whose dependencies and commit rules clash with this setup. From `plugins.txt`: humanizer, blaise, docker-skills and jk. From a clone in `~/PycharmProjects/harnais`, when there is one: the `pr-risk` skill, linked, and the GitHub signature hook, run in place. Also the `jk` CLI through Homebrew.
+
+Not installed from here: the usage telemetry of harnais. Its token must stay out of this repo; the variables to put in `env` of `~/.claude/settings.json` are in harnais' `plugins/harnais/setup/configure.mjs`.
 
 ## Sources
 
