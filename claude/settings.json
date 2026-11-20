@@ -15,5 +15,19 @@
     }
   },
   "theme": "dark",
-  "includeGitInstructions": false
+  "includeGitInstructions": false,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$HOME/PycharmProjects/harnais/plugins/harnais/hooks/github-signature.mjs\"; [ ! -f \"$f\" ] || CLAUDE_PLUGIN_OPTION_GITHUB_SIGNATURE='🤖 Claude pour aguiddir' node \"$f\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }

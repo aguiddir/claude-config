@@ -184,6 +184,28 @@ if ! $SKIP_MCP; then
   fi
 fi
 
+# --- Picks from the team's harnais ------------------------------------------
+# harnais (softwarevidal/harnais) is the team's Claude Code setup. Its own
+# plugin is not installed: its dependencies would install superpowers,
+# ponytail and plannotator a second time, and its commit rules contradict
+# claude/rules/git-commit.md. What is worth taking is linked from a clone
+# next to this repo, so a `git pull` there updates it. The hook that refuses
+# an unsigned GitHub post is in claude/settings.json, and runs from the clone.
+step "Picks from the team's harnais"
+HARNAIS="$HOME/PycharmProjects/harnais/plugins/harnais"
+if [ -d "$HARNAIS" ]; then
+  link "$HARNAIS/skills/pr-risk" "$CLAUDE_DIR/skills/pr-risk"
+  # pr-risk calls ${CLAUDE_SKILL_DIR}/../../scripts/gh-pr-upsert-comment.mjs
+  link "$HARNAIS/scripts/gh-pr-upsert-comment.mjs" "$CLAUDE_DIR/scripts/gh-pr-upsert-comment.mjs"
+else
+  info "skip: no harnais clone at ${HARNAIS%/plugins/harnais}"
+fi
+# The jk plugin (plugins.txt) drives this CLI
+if has jk; then info "ok       jk"
+elif has brew; then info "install  jk"; run brew install avivsinai/tap/jk || info "FAILED   jk"
+else info "skip: jk needs Homebrew (https://github.com/avivsinai/jenkins-cli)"
+fi
+
 # --- Playwright agent CLI -------------------------------------------------
 if ! $SKIP_PLAYWRIGHT; then
   step "Playwright agent CLI (https://playwright.dev/agent-cli/installation)"
