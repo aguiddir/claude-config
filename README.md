@@ -33,19 +33,6 @@ After a turn that edited files, a band above the prompt offers to replay them: p
 
 Messages are in French: edit the strings in `plugins/replay/hooks/register.tsx` to change them.
 
-## Just the CI watch
-
-For Vidal repos built on `jenkins.vidal.net`. A band above the prompt follows the Jenkins build of the current branch, or of its PR (`PR-<n>`) when the branch has no job of its own: a progress bar from Jenkins' estimated duration, the stage running, each stage's state, and a link to the build. When the build ends, a toast gives its result. Once the build's own SonarQube stage has run, the band shows the quality gate of the branch or PR with the conditions that failed, read 30 seconds after the end so that it is this build's analysis, and a toast says when it fails. A finished build stays on the band for 15 minutes after it ends or after `/ci`, whichever is later, so `/ci` shows the build it finds however old. When the build fails or its gate is red, `f` in an empty prompt (until the next prompt you send; after that, ctrl+x tab then `f`, or the band's button) puts the failure in the prompt box, to read, edit and send yourself: the failed stage, the console's error lines and the gate's broken conditions. Sending that prompt attaches the last 150 lines of the console, out of the box.
-
-It reads the repo and branch of the directory Claude Code runs in and polls Jenkins every 10 seconds, anonymously, from the Vidal network. `/ci 231`, `/ci #231` or `/ci <PR URL>` follows that PR's job whatever the branch, `/ci <path>` follows another repo, `/ci` alone goes back to the session's directory; each answers with the build it found. Needs `gh` (to find the PR) and, for the quality gate, the SonarQube MCP server connected in Claude Code. Needs Claude Code 2.1.287 or later.
-
-```
-/plugin marketplace add aguiddir/claude-config
-/plugin install ci-watch@claude-config
-```
-
-The Jenkins host and job folder (`team.software/github`) are set at the top of `plugins/ci-watch/hooks/jenkins.ts`.
-
 ## Just the PR comments
 
 A band above the prompt lists the open PRs of the repo that have unresolved review threads, in two groups, so it works from `main` too: those to work on (yours, and the current branch's whoever wrote it) and those you review (asked or already reviewed): `💬 à traiter : #89 (9) · en relecture : #73 (10)`. `c` in an empty prompt (while new threads have come in and no prompt has been sent since; otherwise `/pr-review`, or `/pr-review 89` for one PR) opens them in a pane, one thread at a time: the code it is about, as a diff, and its whole conversation, badged `↩ répondu` when the PR's author has the last word and `obsolète` when it is about older code. In the pane:
@@ -90,7 +77,6 @@ Reading a diff is the slowest way to understand what an agent did. `/explain-dif
 | `plugins.txt` | `claude plugin install` | Marketplaces and plugins |
 | `plugins/notify/` | plugin `notify@claude-config` | Desktop notification (D-Bus) per hook event: done, error, permission, question |
 | `plugins/replay/` | plugin `replay@claude-config` | `/replay` (or `r` after a turn) steps through the last turn's `Edit`/`Write` calls as diffs above the prompt (a [mod](https://claude.dev/blog/getting-started-with-claude-code-mods/)) |
-| `plugins/ci-watch/` | plugin `ci-watch@claude-config` | Band above the prompt following the current branch's Jenkins build stage by stage, with its Sonar quality gate (a mod) |
 | `plugins/pr-comments/` | plugin `pr-comments@claude-config` | Band and pane for the PR's unresolved review threads: send some to Claude, reply, resolve (a mod) |
 | `plugins/explain-diff/` | plugin `explain-diff@claude-config` | `/explain-diff`: a private web page to understand a change before merging it (before/after diagrams, files by intent, decisions) |
 
